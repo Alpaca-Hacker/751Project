@@ -1,0 +1,311 @@
+// XPBDSoftBody.compute - GPU compute shader for XPBD soft body physics
+
+#pragma kernel IntegrateParticles
+#pragma kernel SolveConstraints
+#pragma kernel UpdateMesh
+#pragma kernel DecayLambdas
+#pragma kernel ValidatecolourGroups
+#pragma kernel ComputeDiagnostics
+#pragma kernel ApplyFloorConstraint
+
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float3 force;
+    float invMass;
+};
+
+struct Constraint
+{
+    int particleA;
+    int particleB;
+    float restLength;
+    float compliance;
+    float lambda;
+    int colourGroup;
+};
+
+// Buffers
+RWStructuredBuffer<Particle> particles;
+RWStructuredBuffer<Constraint> constraints;
+RWStructuredBuffer<float3> vertices;
+RWStructuredBuffer<float4> debugBuffer;
+
+// Parameters
+float deltaTime;
+float gravity;
+float damping;
+int particleCount;
+int constraintCount;
+float3 worldPosition;
+float floorY;
+int currentColourGroup;
+float lambdaDecay;
+
+// Thread group size
+#define THREAD_GROUP_SIZE 64
+
+// Utility functions for safe computation
+float SafeLength(float3 v)
+{
+    float lenSq = dot(v, v);
+    return sqrt(max(lenSq, 1e-12));
+}
+
+float3 SafeNormalize(float3 v)
+{
+    float len = SafeLength(v);
+    return len > 1e-6 ? v / len : float3(0, 1, 0);
+}
+
+float3 ValidatePosition(float3 pos)
+{
+    // Check for NaN or infinity
+    if (any(isnan(pos)) || any(isinf(pos)))
+    {
+        return float3(0, 1, 0); // Safe default position
+    }
+    
+    // Clamp to reasonable world bounds
+    const float MAX_WORLD_SIZE = 1000.0;
+    return clamp(pos, -MAX_WORLD_SIZE, MAX_WORLD_SIZE);
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void IntegrateParticles(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)particleCount) return;
+    
+    Particle p = particles[index];
+    
+    if (p.invMass <= 0.0) return;
+    
+
+    float3 gravityForce = float3(0, -gravity, 0);
+    p.force += gravityForce;
+    
+    float3 acceleration = p.force * p.invMass;
+    p.velocity += acceleration * deltaTime;
+    
+    p.velocity *= (1.0 - damping * deltaTime);
+    
+    p.position += p.velocity * deltaTime;
+    
+    p.force = float3(0, 0, 0);
+    
+    particles[index] = p;
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void SolveConstraints(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)constraintCount) return;
+    
+    Constraint c = constraints[index];
+    
+    // Only solve constraints in the current colour group
+    if (c.colourGroup != currentColourGroup) return;
+    
+    // Load particles
+    Particle pA = particles[c.particleA];
+    Particle pB = particles[c.particleB];
+    
+    // Skip if both particles are fixed
+    if (pA.invMass == 0.0 && pB.invMass == 0.0) return;
+    
+    // Calculate constraint violation
+    float3 delta = pB.position - pA.position;
+    float currentLength = length(delta);
+    
+    // Skip degenerate constraints
+    if (currentLength < 0.0001 || c.restLength < 0.0001) return;
+    
+    float3 direction = delta / currentLength;
+    float constraintError = currentLength - c.restLength;
+    
+    // XPBD constraint solving
+    // alphaTilde is calculated HERE using the constraint's compliance
+    float alphaTilde = c.compliance / (deltaTime * deltaTime);
+    
+    // Ensure alphaTilde isn't too small
+    alphaTilde = max(alphaTilde, 1e-10);
+    
+    // Calculate effective masses
+    float wA = pA.invMass;
+    float wB = pB.invMass;
+    float totalInvMass = wA + wB;
+    
+    if (totalInvMass < 0.0001) return;
+    
+    // XPBD solving equation
+    float deltaLambda = (-constraintError - alphaTilde * c.lambda) / 
+                       (totalInvMass + alphaTilde);
+    
+    // Clamp delta lambda to prevent explosions
+    float maxCorrection = c.restLength * 0.1; // 10% of rest length
+    deltaLambda = clamp(deltaLambda, -maxCorrection, maxCorrection);
+    
+    // Update accumulated lambda
+    c.lambda += deltaLambda;
+    
+    // Optional: clamp total lambda to prevent drift
+    c.lambda = clamp(c.lambda, -100.0, 100.0);
+    
+    // Apply position corrections
+    float3 correction = deltaLambda * direction;
+    
+    if (pA.invMass > 0.0)
+    {
+        pA.position -= correction * pA.invMass;
+    }
+    
+    if (pB.invMass > 0.0)
+    {
+        pB.position += correction * pB.invMass;
+    }
+    
+    // Write back
+    particles[c.particleA] = pA;
+    particles[c.particleB] = pB;
+    constraints[index] = c;
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void UpdateMesh(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)particleCount) return;
+    
+    float3 position = particles[index].position;
+    
+    // Validate position before writing to vertex buffer
+    if (any(isnan(position)) || any(isinf(position)))
+    {
+        // Use a safe default position
+        position = float3(0, 0, 0);
+    }
+    
+    // Convert world position to local position for mesh
+    vertices[index] = position;
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void DecayLambdas(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)constraintCount) return;
+    
+    constraints[index].lambda *= lambdaDecay;
+}
+
+[numthreads(1, 1, 1)]
+void ValidatecolourGroups(uint3 id : SV_DispatchThreadID)
+{
+    // Run single-threaded validation
+    for (int i = 0; i < constraintCount; i++)
+    {
+        Constraint c1 = constraints[i];
+        for (int j = i + 1; j < constraintCount; j++)
+        {
+            Constraint c2 = constraints[j];
+            
+            // Check if constraints in same colour group share particles
+            if (c1.colourGroup == c2.colourGroup)
+            {
+                if (c1.particleA == c2.particleA || c1.particleA == c2.particleB ||
+                    c1.particleB == c2.particleA || c1.particleB == c2.particleB)
+                {
+                    // RACE CONDITION DETECTED!
+                    // Log this error somehow (atomic counter, debug buffer, etc.)
+                }
+            }
+        }
+    }
+}
+
+[numthreads(1, 1, 1)]
+void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
+{
+    float maxVel = 0.0;
+    float maxError = 0.0;
+    float totalLambda = 0.0;
+    int groundCount = 0;
+    
+    // Check particle velocities and ground contact
+    for (uint i = 0; i < (uint)particleCount; i++)
+    {
+        Particle p = particles[i];
+        float vel = length(p.velocity);
+        maxVel = max(maxVel, vel);
+        
+        if (abs(p.position.y - floorY) < 0.01)
+        {
+            groundCount++;
+        }
+    }
+    
+    // Check constraint errors
+    for (uint j = 0; j < (uint)constraintCount; j++)
+    {
+        Constraint c = constraints[j];
+        Particle pA = particles[c.particleA];
+        Particle pB = particles[c.particleB];
+        
+        float3 delta = pB.position - pA.position;
+        float currentLength = length(delta);
+        float error = abs(currentLength - c.restLength);
+        maxError = max(maxError, error);
+        totalLambda += abs(c.lambda);
+    }
+    
+    debugBuffer[0] = float4(maxVel, maxError, totalLambda / constraintCount, groundCount);
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ApplyFloorConstraint(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)particleCount) return;
+    
+    Particle p = particles[index];
+    
+    if (p.invMass <= 0.0) return;
+    
+    // More robust floor collision
+    float penetration = floorY - p.position.y;
+    
+    if (penetration > 0)
+    {
+        // Project position back to floor with small offset
+        p.position.y = floorY + 0.001; // Small offset prevents z-fighting
+        
+        // Reflect velocity based on penetration depth
+        if (p.velocity.y < 0)
+        {
+            // Stronger response for deeper penetrations
+            float restitution = 0.1;
+            p.velocity.y = abs(p.velocity.y) * restitution + penetration * 10.0;
+            
+            // Apply friction proportional to normal force
+            float normalForce = abs(p.velocity.y) + penetration * 100.0;
+            float frictionCoeff = 0.5;
+            
+            float2 horizontalVel = float2(p.velocity.x, p.velocity.z);
+            float horizontalSpeed = length(horizontalVel);
+            
+            if (horizontalSpeed > 0.001)
+            {
+                float2 frictionDir = horizontalVel / horizontalSpeed;
+                float frictionMagnitude = min(horizontalSpeed, normalForce * frictionCoeff * deltaTime);
+                
+                p.velocity.x -= frictionDir.x * frictionMagnitude;
+                p.velocity.z -= frictionDir.y * frictionMagnitude;
+            }
+        }
+    }
+    
+    particles[index] = p;
+}
