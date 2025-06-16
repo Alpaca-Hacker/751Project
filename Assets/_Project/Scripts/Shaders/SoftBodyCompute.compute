@@ -1,4 +1,4 @@
-#pragma kernel IntegrateParticles
+#pragma kernel IntegrateAndStorePositions 
 #pragma kernel SolveConstraints
 #pragma kernel UpdateMesh
 #pragma kernel DecayLambdas
@@ -6,6 +6,7 @@
 #pragma kernel ComputeDiagnostics
 #pragma kernel SolveCollisionConstraints
 #pragma kernel SolveVolumeConstraints
+#pragma kernel UpdateVelocities          
 
 struct Particle
 {
@@ -39,6 +40,7 @@ RWStructuredBuffer<Constraint> constraints;
 RWStructuredBuffer<float3> vertices;
 RWStructuredBuffer<float4> debugBuffer;
 RWStructuredBuffer<VolumeConstraint> volumeConstraints;
+RWStructuredBuffer<float3> previousPositions;
 
 // Parameters
 float deltaTime;
@@ -83,27 +85,24 @@ float3 ValidatePosition(float3 pos)
 }
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void IntegrateParticles(uint3 id : SV_DispatchThreadID)
+void IntegrateAndStorePositions(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
     if (index >= (uint)particleCount) return;
     
     Particle p = particles[index];
     
+    previousPositions[index] = p.position;
+    
     if (p.invMass <= 0.0) return;
     
-
     float3 gravityForce = float3(0, -gravity, 0);
-    p.force += gravityForce;
-    
-    float3 acceleration = p.force * p.invMass;
+    float3 acceleration = gravityForce * p.invMass;
     p.velocity += acceleration * deltaTime;
     
-    p.velocity *= (1.0 - damping * deltaTime);
-    
+    p.velocity *= (1.0 - damping); 
+
     p.position += p.velocity * deltaTime;
-    
-    p.force = float3(0, 0, 0);
     
     particles[index] = p;
 }
@@ -360,4 +359,21 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
     particles[vc.p3] = p3;
     particles[vc.p4] = p4;
     volumeConstraints[index] = vc;
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void UpdateVelocities(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)particleCount) return;
+
+    Particle p = particles[index];
+    if (p.invMass <= 0.0) return;
+
+    float3 prevPos = previousPositions[index];
+    
+    // Recalculate velocity based on the total position change during the substep
+    p.velocity = (p.position - prevPos) / deltaTime;
+
+    particles[index] = p;
 }

@@ -4064,14 +4064,14 @@ MonoBehaviour:
     size: {x: 1, y: 1, z: 1}
     resolution: 4
     mass: 1
-    damping: 0.02
+    damping: 0.03
     gravity: 0
-    lambdaDecay: 0.99
-    solverIterations: 150
+    lambdaDecay: 0.98
+    solverIterations: 15
     structuralCompliance: 0.00001
     shearCompliance: 0.0001
     bendCompliance: 0.001
-    volumeCompliance: 0.000001
+    volumeCompliance: 0.00001
     collisionCompliance: 0
     enableCollision: 1
     collisionLayers:

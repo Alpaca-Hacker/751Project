@@ -10,23 +10,7 @@ namespace SoftBody.Scripts
 {
     public class SoftBodyPhysics : MonoBehaviour
     {
-        private static readonly int DeltaTime = Shader.PropertyToID("deltaTime");
-        private static readonly int Gravity = Shader.PropertyToID("gravity");
-        private static readonly int Damping = Shader.PropertyToID("damping");
-        private static readonly int FloorY = Shader.PropertyToID("floorY");
-        private static readonly int WorldPosition = Shader.PropertyToID("worldPosition");
-        private static readonly int ParticleCount = Shader.PropertyToID("particleCount");
-        private static readonly int ConstraintCount = Shader.PropertyToID("constraintCount");
-        private static readonly int LambdaDecay = Shader.PropertyToID("lambdaDecay");
-        private static readonly int Particles = Shader.PropertyToID("particles");
-        private static readonly int Constraints = Shader.PropertyToID("constraints");
-        private static readonly int Vertices = Shader.PropertyToID("vertices");
-        private static readonly int DebugBuffer = Shader.PropertyToID("debugBuffer");
-        private static readonly int CurrentColourGroup = Shader.PropertyToID("currentColourGroup");
-        private static readonly int VolumeConstraintCount = Shader.PropertyToID("volumeConstraintCount");
-        private static readonly int VolumeConstraints = Shader.PropertyToID("volumeConstraints");
-        private static readonly int CollisionCompliance = Shader.PropertyToID("collisionCompliance");
-
+        
         [SerializeField] private SoftBodySettings settings = new ();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
@@ -37,6 +21,7 @@ namespace SoftBody.Scripts
         private ComputeBuffer _indexBuffer;
         private ComputeBuffer _debugBuffer;
         private ComputeBuffer _volumeConstraintBuffer;
+        private ComputeBuffer _previousPositionsBuffer;
 
         private Mesh _mesh;
         private List<Particle> _particles;
@@ -44,13 +29,14 @@ namespace SoftBody.Scripts
         private List<VolumeConstraint> _volumeConstraints;
         private List<int> _indices;
 
-        private int _kernelIntegrate;
+        private int _kernelIntegrateAndStore;
         private int _kernelSolveConstraints;
         private int _kernelUpdateMesh;
         private int _kernelDecayLambdas;
         private int _kernelComputeDiagnostics;
         private int _kernelSolveCollisionConstraints;
         private int _kernelVolumeConstraints;
+        private int _kernelUpdateVelocities;
         
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
@@ -87,18 +73,21 @@ namespace SoftBody.Scripts
             {
                 Debug.LogError("Compute Shader not assigned! Please assign the XPBDSoftBody compute shader.");
                 return;
+                
             }
 
-            _kernelIntegrate = computeShader.FindKernel("IntegrateParticles");
+            _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
             _kernelSolveConstraints = computeShader.FindKernel("SolveConstraints");
             _kernelUpdateMesh = computeShader.FindKernel("UpdateMesh");
             _kernelDecayLambdas = computeShader.FindKernel("DecayLambdas");
             _kernelComputeDiagnostics = computeShader.FindKernel("ComputeDiagnostics");
             _kernelSolveCollisionConstraints = computeShader.FindKernel("SolveCollisionConstraints");
             _kernelVolumeConstraints = computeShader.FindKernel("SolveVolumeConstraints");
+            _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
+            _kernelUpdateVelocities = computeShader.FindKernel("UpdateVelocities");
 
             // Verify all kernels were found
-            if (_kernelIntegrate == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
+            if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
             {
                 Debug.LogError(
                     "Could not find required compute shader kernels! Make sure the compute shader has IntegrateParticles, SolveConstraints, and UpdateMesh kernels.");
@@ -255,7 +244,6 @@ namespace SoftBody.Scripts
             }
         }
         
-        
         private void ApplyNaiveGraphColouring()
         {
             Debug.Log($"Applying naive graph colouring to {_constraints.Count} constraints...");
@@ -305,8 +293,6 @@ namespace SoftBody.Scripts
 
             Debug.Log($"Graph colouring complete: {maxcolour + 1} colour groups needed");
         }
-        
-        
 
         private void AddConstraint(int a, int b, float compliance)
         {
@@ -394,6 +380,7 @@ namespace SoftBody.Scripts
             _indexBuffer = new ComputeBuffer(_indices.Count, sizeof(int));
             _debugBuffer = new ComputeBuffer(1, sizeof(float) * 4);
             _volumeConstraintBuffer = new ComputeBuffer(_volumeConstraints.Count, SizeOf<VolumeConstraint>());
+            _previousPositionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
            
 
             // Upload initial data
@@ -505,7 +492,7 @@ namespace SoftBody.Scripts
             
             if (particleThreadGroups > 0)
             {
-                computeShader.Dispatch(_kernelIntegrate, particleThreadGroups, 1, 1);
+                computeShader.Dispatch(_kernelIntegrateAndStore, particleThreadGroups, 1, 1);
             }
             
             for (var iter = 0; iter < settings.solverIterations; iter++)
@@ -515,7 +502,7 @@ namespace SoftBody.Scripts
                 for (var colourGroup = 0; colourGroup <= maxColourGroup; colourGroup++)
                 {
                     
-                    computeShader.SetInt(CurrentColourGroup, colourGroup);
+                    computeShader.SetInt(Constants.CurrentColourGroup, colourGroup);
                     
                     if (constraintThreadGroups > 0)
                     {
@@ -524,7 +511,13 @@ namespace SoftBody.Scripts
                 }
                 
                 computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
+                
                 computeShader.Dispatch(_kernelSolveCollisionConstraints, particleThreadGroups, 1, 1);
+            }
+            
+            if (particleThreadGroups > 0)
+            {
+                computeShader.Dispatch(_kernelUpdateVelocities, particleThreadGroups, 1, 1);
             }
             
             // Update mesh vertices (only on last substep to save bandwidth)
@@ -549,33 +542,43 @@ namespace SoftBody.Scripts
 
         private void BindBuffers()
         {
-            computeShader.SetBuffer(_kernelIntegrate, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelSolveConstraints, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelSolveConstraints, Constraints, _constraintBuffer);
-            computeShader.SetBuffer(_kernelUpdateMesh, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelUpdateMesh, Vertices, _vertexBuffer);
-            computeShader.SetBuffer(_kernelDecayLambdas, Constraints, _constraintBuffer);
-            computeShader.SetBuffer(_kernelComputeDiagnostics, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelComputeDiagnostics, Constraints, _constraintBuffer);
-            computeShader.SetBuffer(_kernelSolveCollisionConstraints, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelComputeDiagnostics, DebugBuffer, _debugBuffer);
-            computeShader.SetBuffer(_kernelVolumeConstraints, Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelVolumeConstraints, VolumeConstraints, _volumeConstraintBuffer);
+            computeShader.SetBuffer(_kernelIntegrateAndStore, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelIntegrateAndStore, Constants.PreviousPositions, _previousPositionsBuffer);
+            
+            computeShader.SetBuffer(_kernelSolveConstraints, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelSolveConstraints, Constants.Constraints, _constraintBuffer);
+            
+            computeShader.SetBuffer(_kernelUpdateMesh, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelUpdateMesh, Constants.Vertices, _vertexBuffer);
+            computeShader.SetBuffer(_kernelDecayLambdas, Constants.Constraints, _constraintBuffer);
+            
+            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.Constraints, _constraintBuffer);
+            
+            computeShader.SetBuffer(_kernelSolveCollisionConstraints, Constants.Particles, _particleBuffer);
+            
+            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.DebugBuffer, _debugBuffer);
+            
+            computeShader.SetBuffer(_kernelVolumeConstraints, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelVolumeConstraints, Constants.VolumeConstraints, _volumeConstraintBuffer);
+            
+            computeShader.SetBuffer(_kernelUpdateVelocities, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelUpdateVelocities, Constants.PreviousPositions, _previousPositionsBuffer);
         }
 
         private void SetComputeShaderParameters(float deltaTime)
         {
             var floorY = FindFloorLevel();
-            computeShader.SetFloat(DeltaTime, deltaTime);
-            computeShader.SetFloat(Gravity, settings.gravity);
-            computeShader.SetFloat(Damping, settings.damping);
-            computeShader.SetFloat(FloorY, floorY);
-            computeShader.SetVector(WorldPosition, transform.position);
-            computeShader.SetInt(ParticleCount, _particles.Count);
-            computeShader.SetInt(ConstraintCount, _constraints.Count);
-            computeShader.SetFloat(LambdaDecay, settings.lambdaDecay);
-            computeShader.SetInt(VolumeConstraintCount, _volumeConstraints.Count);
-            computeShader.SetFloat(CollisionCompliance, settings.collisionCompliance);
+            computeShader.SetFloat(Constants.DeltaTime, deltaTime);
+            computeShader.SetFloat(Constants.Gravity, settings.gravity);
+            computeShader.SetFloat(Constants.Damping, settings.damping);
+            computeShader.SetFloat(Constants.FloorY, floorY);
+            computeShader.SetVector(Constants.WorldPosition, transform.position);
+            computeShader.SetInt(Constants.ParticleCount, _particles.Count);
+            computeShader.SetInt(Constants.ConstraintCount, _constraints.Count);
+            computeShader.SetFloat(Constants.LambdaDecay, settings.lambdaDecay);
+            computeShader.SetInt(Constants.VolumeConstraintCount, _volumeConstraints.Count);
+            computeShader.SetFloat(Constants.CollisionCompliance, settings.collisionCompliance);
         }
 
         private int GetMaxColourGroup()
@@ -909,6 +912,7 @@ namespace SoftBody.Scripts
             _indexBuffer?.Release();
             _debugBuffer?.Release();
             _volumeConstraintBuffer?.Release();
+            _previousPositionsBuffer?.Release();
             if (_mesh != null)
             {
                 Destroy(_mesh);
