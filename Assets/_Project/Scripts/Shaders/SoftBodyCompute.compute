@@ -1,12 +1,11 @@
-// XPBDSoftBody.compute - GPU compute shader for XPBD soft body physics
-
 #pragma kernel IntegrateParticles
 #pragma kernel SolveConstraints
 #pragma kernel UpdateMesh
 #pragma kernel DecayLambdas
 #pragma kernel ValidatecolourGroups
 #pragma kernel ComputeDiagnostics
-#pragma kernel ApplyFloorConstraint
+#pragma kernel SolveCollisionConstraints
+#pragma kernel SolveVolumeConstraints
 
 struct Particle
 {
@@ -26,11 +25,20 @@ struct Constraint
     int colourGroup;
 };
 
+struct VolumeConstraint
+{
+    int p1, p2, p3, p4;
+    float restVolume;
+    float compliance;
+    float lambda;
+};
+
 // Buffers
 RWStructuredBuffer<Particle> particles;
 RWStructuredBuffer<Constraint> constraints;
 RWStructuredBuffer<float3> vertices;
 RWStructuredBuffer<float4> debugBuffer;
+RWStructuredBuffer<VolumeConstraint> volumeConstraints;
 
 // Parameters
 float deltaTime;
@@ -42,6 +50,8 @@ float3 worldPosition;
 float floorY;
 int currentColourGroup;
 float lambdaDecay;
+int volumeConstraintCount;
+float collisionCompliance;
 
 // Thread group size
 #define THREAD_GROUP_SIZE 64
@@ -265,47 +275,89 @@ void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void ApplyFloorConstraint(uint3 id : SV_DispatchThreadID)
+void SolveCollisionConstraints(uint3 id : SV_DispatchThreadID)
 {
     uint index = id.x;
     if (index >= (uint)particleCount) return;
     
     Particle p = particles[index];
-    
     if (p.invMass <= 0.0) return;
+
+    // --- SDF for a floor plane ---
+    float penetration = p.position.y - floorY;
     
-    // More robust floor collision
-    float penetration = floorY - p.position.y;
-    
-    if (penetration > 0)
+    // We have an inequality constraint C >= 0.
+    // The constraint is violated if penetration < 0.
+    if (penetration < 0.0)
     {
-        // Project position back to floor with small offset
-        p.position.y = floorY + 0.001; // Small offset prevents z-fighting
-        
-        // Reflect velocity based on penetration depth
-        if (p.velocity.y < 0)
-        {
-            // Stronger response for deeper penetrations
-            float restitution = 0.1;
-            p.velocity.y = abs(p.velocity.y) * restitution + penetration * 10.0;
-            
-            // Apply friction proportional to normal force
-            float normalForce = abs(p.velocity.y) + penetration * 100.0;
-            float frictionCoeff = 0.5;
-            
-            float2 horizontalVel = float2(p.velocity.x, p.velocity.z);
-            float horizontalSpeed = length(horizontalVel);
-            
-            if (horizontalSpeed > 0.001)
-            {
-                float2 frictionDir = horizontalVel / horizontalSpeed;
-                float frictionMagnitude = min(horizontalSpeed, normalForce * frictionCoeff * deltaTime);
-                
-                p.velocity.x -= frictionDir.x * frictionMagnitude;
-                p.velocity.z -= frictionDir.y * frictionMagnitude;
-            }
-        }
+        // C is the penetration depth, which is negative here. We want to correct it to be >= 0.
+        float C = penetration;
+        float3 normal = float3(0, 1, 0); // Gradient of the plane SDF
+        float w = p.invMass;
+
+        // Note: For inequality, we don't use lambda accumulation from previous frames.
+        // It's a one-shot correction.
+        float alphaTilde = collisionCompliance / (deltaTime * deltaTime);
+        float deltaLambda = -C / (w + alphaTilde);
+
+        // Apply correction
+        p.position += deltaLambda * w * normal;
+
+        // Write back
+        particles[index] = p;
     }
+}
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)volumeConstraintCount) return; // Add volumeConstraintCount parameter
+
+    VolumeConstraint vc = volumeConstraints[index];
+    Particle p1 = particles[vc.p1];
+    Particle p2 = particles[vc.p2];
+    Particle p3 = particles[vc.p3];
+    Particle p4 = particles[vc.p4];
+
+    float w1 = p1.invMass;
+    float w2 = p2.invMass;
+    float w3 = p3.invMass;
+    float w4 = p4.invMass;
+    float totalInvMass = w1 + w2 + w3 + w4;
+    if (totalInvMass < 0.0001) return;
+
+    // Calculate gradients of the volume constraint
+    float3 grad1 = cross(p2.position - p4.position, p3.position - p4.position) / 6.0;
+    float3 grad2 = cross(p3.position - p4.position, p1.position - p4.position) / 6.0;
+    float3 grad3 = cross(p1.position - p4.position, p2.position - p4.position) / 6.0;
+    float3 grad4 = -grad1 - grad2 - grad3;
+
+    // Constraint error (current volume - rest volume)
+    float currentVolume = dot(p1.position - p4.position, cross(p2.position - p4.position, p3.position - p4.position)) / 6.0;
+    float C = currentVolume - vc.restVolume;
     
-    particles[index] = p;
+    // Weighted sum of squared gradient magnitudes
+    float grad_sum = w1 * dot(grad1, grad1) + w2 * dot(grad2, grad2) + w3 * dot(grad3, grad3) + w4 * dot(grad4, grad4);
+
+    float alphaTilde = vc.compliance / (deltaTime * deltaTime);
+    if (grad_sum + alphaTilde < 0.0001) return;
+
+    // Calculate delta lambda
+    float deltaLambda = (-C - alphaTilde * vc.lambda) / (grad_sum + alphaTilde);
+    
+    vc.lambda += deltaLambda;
+
+    // Apply corrections
+    if (w1 > 0.0) p1.position += w1 * deltaLambda * grad1;
+    if (w2 > 0.0) p2.position += w2 * deltaLambda * grad2;
+    if (w3 > 0.0) p3.position += w3 * deltaLambda * grad3;
+    if (w4 > 0.0) p4.position += w4 * deltaLambda * grad4;
+
+    // Write back
+    particles[vc.p1] = p1;
+    particles[vc.p2] = p2;
+    particles[vc.p3] = p3;
+    particles[vc.p4] = p4;
+    volumeConstraints[index] = vc;
 }

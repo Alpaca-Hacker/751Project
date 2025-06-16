@@ -1,8 +1,10 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SoftBody.Scripts.Models;
 using UnityEngine;
+using static System.Runtime.InteropServices.Marshal;
 
 namespace SoftBody.Scripts
 {
@@ -20,8 +22,11 @@ namespace SoftBody.Scripts
         private static readonly int Constraints = Shader.PropertyToID("constraints");
         private static readonly int Vertices = Shader.PropertyToID("vertices");
         private static readonly int DebugBuffer = Shader.PropertyToID("debugBuffer");
-        private static readonly int CurrentcolourGroup = Shader.PropertyToID("currentColourGroup");
-        
+        private static readonly int CurrentColourGroup = Shader.PropertyToID("currentColourGroup");
+        private static readonly int VolumeConstraintCount = Shader.PropertyToID("volumeConstraintCount");
+        private static readonly int VolumeConstraints = Shader.PropertyToID("volumeConstraints");
+        private static readonly int CollisionCompliance = Shader.PropertyToID("collisionCompliance");
+
         [SerializeField] private SoftBodySettings settings = new ();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
@@ -31,10 +36,12 @@ namespace SoftBody.Scripts
         private ComputeBuffer _vertexBuffer;
         private ComputeBuffer _indexBuffer;
         private ComputeBuffer _debugBuffer;
+        private ComputeBuffer _volumeConstraintBuffer;
 
         private Mesh _mesh;
         private List<Particle> _particles;
         private List<Constraint> _constraints;
+        private List<VolumeConstraint> _volumeConstraints;
         private List<int> _indices;
 
         private int _kernelIntegrate;
@@ -42,7 +49,11 @@ namespace SoftBody.Scripts
         private int _kernelUpdateMesh;
         private int _kernelDecayLambdas;
         private int _kernelComputeDiagnostics;
-        private int _kernelApplyFloorConstraint;
+        private int _kernelSolveCollisionConstraints;
+        private int _kernelVolumeConstraints;
+        
+        private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
+        private bool _isReadbackPending = false;
 
         private void Start()
         {
@@ -83,7 +94,8 @@ namespace SoftBody.Scripts
             _kernelUpdateMesh = computeShader.FindKernel("UpdateMesh");
             _kernelDecayLambdas = computeShader.FindKernel("DecayLambdas");
             _kernelComputeDiagnostics = computeShader.FindKernel("ComputeDiagnostics");
-            _kernelApplyFloorConstraint = computeShader.FindKernel("ApplyFloorConstraint");
+            _kernelSolveCollisionConstraints = computeShader.FindKernel("SolveCollisionConstraints");
+            _kernelVolumeConstraints = computeShader.FindKernel("SolveVolumeConstraints");
 
             // Verify all kernels were found
             if (_kernelIntegrate == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
@@ -139,7 +151,8 @@ namespace SoftBody.Scripts
             GenerateStructuralConstraints();  // Main edges
             GenerateShearConstraints();       // Face diagonals  
             GenerateBendConstraints();        // Volume diagonals
-            ApplyGraphcolouring();
+            GenerateVolumeConstraints();
+            ApplyGraphColouring();
             GenerateMeshTopology();
         }
         
@@ -219,7 +232,7 @@ namespace SoftBody.Scripts
             }
         }
         
-        private void ApplyGraphcolouring()
+        private void ApplyGraphColouring()
         {
             // Initialize all constraints with colour group 0 as fallback
             for (var i = 0; i < _constraints.Count; i++)
@@ -238,12 +251,12 @@ namespace SoftBody.Scripts
             catch (System.Exception e)
             {
                 Debug.LogWarning($"Graph clustering failed: {e.Message}, using naive colouring");
-                ApplyNaiveGraphcolouring();
+                ApplyNaiveGraphColouring();
             }
         }
         
         
-        private void ApplyNaiveGraphcolouring()
+        private void ApplyNaiveGraphColouring()
         {
             Debug.Log($"Applying naive graph colouring to {_constraints.Count} constraints...");
 
@@ -375,16 +388,19 @@ namespace SoftBody.Scripts
         private void SetupBuffers()
         {
             // Create compute buffers
-            _particleBuffer = new ComputeBuffer(_particles.Count, System.Runtime.InteropServices.Marshal.SizeOf<Particle>());
-            _constraintBuffer = new ComputeBuffer(_constraints.Count, System.Runtime.InteropServices.Marshal.SizeOf<Constraint>());
+            _particleBuffer = new ComputeBuffer(_particles.Count, SizeOf<Particle>());
+            _constraintBuffer = new ComputeBuffer(_constraints.Count, SizeOf<Constraint>());
             _vertexBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _indexBuffer = new ComputeBuffer(_indices.Count, sizeof(int));
             _debugBuffer = new ComputeBuffer(1, sizeof(float) * 4);
+            _volumeConstraintBuffer = new ComputeBuffer(_volumeConstraints.Count, SizeOf<VolumeConstraint>());
+           
 
             // Upload initial data
             _particleBuffer.SetData(_particles);
             _constraintBuffer.SetData(_constraints);
             _indexBuffer.SetData(_indices);
+            _volumeConstraintBuffer.SetData(_volumeConstraints);
 
             // Create mesh
             _mesh = new Mesh();
@@ -412,7 +428,7 @@ namespace SoftBody.Scripts
 
             Debug.Log($"Soft body initialized with {_particles.Count} particles and {_constraints.Count} constraints");
             Debug.Log(
-                $"Constraint buffer size: {System.Runtime.InteropServices.Marshal.SizeOf<Constraint>()} bytes per constraint");
+                $"Constraint buffer size: {SizeOf<Constraint>()} bytes per constraint");
         }
 
         private void SetupRenderMaterial()
@@ -480,6 +496,7 @@ namespace SoftBody.Scripts
             // Integrate particles
             var constraintThreadGroups = Mathf.CeilToInt(_constraints.Count / 64f);
             var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
+            var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
             
             if (constraintThreadGroups > 0)
             {
@@ -490,7 +507,7 @@ namespace SoftBody.Scripts
             {
                 computeShader.Dispatch(_kernelIntegrate, particleThreadGroups, 1, 1);
             }
-
+            
             for (var iter = 0; iter < settings.solverIterations; iter++)
             {
                 var maxColourGroup = GetMaxColourGroup();
@@ -498,7 +515,7 @@ namespace SoftBody.Scripts
                 for (var colourGroup = 0; colourGroup <= maxColourGroup; colourGroup++)
                 {
                     
-                    computeShader.SetInt(CurrentcolourGroup, colourGroup);
+                    computeShader.SetInt(CurrentColourGroup, colourGroup);
                     
                     if (constraintThreadGroups > 0)
                     {
@@ -506,9 +523,10 @@ namespace SoftBody.Scripts
                     }
                 }
                 
-                computeShader.Dispatch(_kernelApplyFloorConstraint, particleThreadGroups, 1, 1);
+                computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
+                computeShader.Dispatch(_kernelSolveCollisionConstraints, particleThreadGroups, 1, 1);
             }
-
+            
             // Update mesh vertices (only on last substep to save bandwidth)
             if (isLastSubstep)
             {
@@ -539,8 +557,10 @@ namespace SoftBody.Scripts
             computeShader.SetBuffer(_kernelDecayLambdas, Constraints, _constraintBuffer);
             computeShader.SetBuffer(_kernelComputeDiagnostics, Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelComputeDiagnostics, Constraints, _constraintBuffer);
-            computeShader.SetBuffer(_kernelApplyFloorConstraint, Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelSolveCollisionConstraints, Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelComputeDiagnostics, DebugBuffer, _debugBuffer);
+            computeShader.SetBuffer(_kernelVolumeConstraints, Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelVolumeConstraints, VolumeConstraints, _volumeConstraintBuffer);
         }
 
         private void SetComputeShaderParameters(float deltaTime)
@@ -554,11 +574,71 @@ namespace SoftBody.Scripts
             computeShader.SetInt(ParticleCount, _particles.Count);
             computeShader.SetInt(ConstraintCount, _constraints.Count);
             computeShader.SetFloat(LambdaDecay, settings.lambdaDecay);
+            computeShader.SetInt(VolumeConstraintCount, _volumeConstraints.Count);
+            computeShader.SetFloat(CollisionCompliance, settings.collisionCompliance);
         }
 
         private int GetMaxColourGroup()
         {
             return _constraints.Max(c => c.ColourGroup);
+        }
+
+        private void GenerateVolumeConstraints()
+        {
+            _volumeConstraints = new List<VolumeConstraint>();
+            var res = settings.resolution;
+            var compliance = settings.volumeCompliance;
+
+            for (var x = 0; x < res - 1; x++)
+            {
+                for (var y = 0; y < res - 1; y++)
+                {
+                    for (var z = 0; z < res - 1; z++)
+                    {
+                        // Get the 8 corners of the cube cell
+                        var p000 = (x * res * res) + (y * res) + z;
+                        var p100 = ((x + 1) * res * res) + (y * res) + z;
+                        var p110 = ((x + 1) * res * res) + ((y + 1) * res) + z;
+                        var p010 = (x * res * res) + ((y + 1) * res) + z;
+                        var p001 = (x * res * res) + (y * res) + (z + 1);
+                        var p101 = ((x + 1) * res * res) + (y * res) + (z + 1);
+                        var p111 = ((x + 1) * res * res) + ((y + 1) * res) + (z + 1);
+                        var p011 = (x * res * res) + ((y + 1) * res) + (z + 1);
+
+                        // Decompose the cube into 5 tetrahedra
+                        AddTetrahedron(p000, p100, p110, p001, compliance);
+                        AddTetrahedron(p010, p110, p000, p011, compliance);
+                        AddTetrahedron(p101, p001, p111, p100, compliance);
+                        AddTetrahedron(p011, p111, p001, p110, compliance);
+                        AddTetrahedron(p001, p110, p111, p011, compliance);
+                    }
+                }
+            }
+            
+            Debug.Log($"Generated {_volumeConstraints.Count} volume constraints from mesh");
+        }
+
+        private void AddTetrahedron(int p1, int p2, int p3, int p4, float compliance)
+        {
+            var pos1 = _particles[p1].Position;
+            var pos2 = _particles[p2].Position;
+            var pos3 = _particles[p3].Position;
+            var pos4 = _particles[p4].Position;
+
+            // The signed volume of a tetrahedron is 1/6 * | (a-d) . ((b-d) x (c-d)) |
+            var restVolume = Vector3.Dot(pos1 - pos4, Vector3.Cross(pos2 - pos4, pos3 - pos4)) / 6.0f;
+
+            // We only want to resist compression, so only create constraints for positive volumes
+            if (restVolume > 0.001f)
+            {
+                _volumeConstraints.Add(new VolumeConstraint
+                {
+                    P1 = p1, P2 = p2, P3 = p3, P4 = p4,
+                    RestVolume = restVolume,
+                    Compliance = compliance,
+                    Lambda = 0
+                });
+            }
         }
 
         // CPU fallback for testing and debugging
@@ -705,8 +785,7 @@ namespace SoftBody.Scripts
         private float FindFloorLevel()
         {
             // Raycast downward to find the floor
-            RaycastHit hit;
-            if (Physics.Raycast(transform.position, Vector3.down, out hit, 100f, settings.collisionLayers))
+            if (Physics.Raycast(transform.position, Vector3.down, out var hit, 100f, settings.collisionLayers))
             {
                 return hit.point.y;
             }
@@ -714,9 +793,6 @@ namespace SoftBody.Scripts
             // Default floor level if no collider found
             return -5f;
         }
-
-        private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
-        private bool _isReadbackPending = false;
 
         private void UpdateMeshFromGPU()
         {
@@ -827,11 +903,12 @@ namespace SoftBody.Scripts
 
         private void OnDestroy()
         {
-            if (_particleBuffer != null) _particleBuffer.Release();
-            if (_constraintBuffer != null) _constraintBuffer.Release();
-            if (_vertexBuffer != null) _vertexBuffer.Release();
-            if (_indexBuffer != null) _indexBuffer.Release();
-            if (_debugBuffer != null) _debugBuffer.Release();
+            _particleBuffer?.Release();
+            _constraintBuffer?.Release();
+            _vertexBuffer?.Release();
+            _indexBuffer?.Release();
+            _debugBuffer?.Release();
+            _volumeConstraintBuffer?.Release();
             if (_mesh != null)
             {
                 Destroy(_mesh);

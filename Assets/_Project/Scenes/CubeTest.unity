@@ -4064,19 +4064,21 @@ MonoBehaviour:
     size: {x: 1, y: 1, z: 1}
     resolution: 4
     mass: 1
-    damping: 0.01
+    damping: 0.02
     gravity: 0
-    lambdaDecay: 0.95
-    solverIterations: 4
-    structuralCompliance: 0.000001
-    shearCompliance: 0.00001
-    bendCompliance: 0.0001
+    lambdaDecay: 0.99
+    solverIterations: 150
+    structuralCompliance: 0.00001
+    shearCompliance: 0.0001
+    bendCompliance: 0.001
+    volumeCompliance: 0.000001
+    collisionCompliance: 0
     enableCollision: 1
     collisionLayers:
       serializedVersion: 2
       m_Bits: 4294967295
     useCPUFallback: 0
-    debugMode: 1
+    debugMode: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: 1678bd2c87a054b4486df20f956434e3, type: 2}
 --- !u!23 &1094367041
