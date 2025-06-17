@@ -2,18 +2,17 @@
 #pragma kernel SolveConstraints
 #pragma kernel UpdateMesh
 #pragma kernel DecayLambdas
-#pragma kernel ValidatecolourGroups
 #pragma kernel ComputeDiagnostics
 #pragma kernel SolveCollisionConstraints
 #pragma kernel SolveVolumeConstraints
-#pragma kernel UpdateVelocities          
+#pragma kernel UpdateVelocities
+#pragma kernel DebugAndValidateParticles
 
 struct Particle
 {
-    float3 position;
-    float3 velocity;
-    float3 force;
-    float invMass;
+    float4 positionAndInvMass; 
+    float4 velocity;
+    float4 force;
 };
 
 struct Constraint
@@ -59,10 +58,27 @@ float collisionCompliance;
 #define THREAD_GROUP_SIZE 64
 
 // Utility functions for safe computation
+
+// Checks for and corrects NaN/Infinity values in a float3
+float3 ValidateFloat3(float3 v)
+{
+   
+    if (any(isnan(v)) || any(isinf(v)))
+    {
+        return float3(0, 0, 0);
+    }
+    return v;
+}
+
+// float SafeLength(float3 v)
+// {
+//     float lenSq = dot(v, v);
+//     return sqrt(max(lenSq, 1e-12));
+// }
+
 float SafeLength(float3 v)
 {
-    float lenSq = dot(v, v);
-    return sqrt(max(lenSq, 1e-12));
+    return length(v + 1e-9);
 }
 
 float3 SafeNormalize(float3 v)
@@ -92,17 +108,20 @@ void IntegrateAndStorePositions(uint3 id : SV_DispatchThreadID)
     
     Particle p = particles[index];
     
-    previousPositions[index] = p.position;
+    previousPositions[index] =p.positionAndInvMass.xyz;
     
-    if (p.invMass <= 0.0) return;
+    if (p.positionAndInvMass.w <= 0.0) return;
     
     float3 gravityForce = float3(0, -gravity, 0);
-    float3 acceleration = gravityForce * p.invMass;
-    p.velocity += acceleration * deltaTime;
+    float3 acceleration = gravityForce * p.positionAndInvMass.w;
+    p.velocity.xyz += acceleration * deltaTime;
     
-    p.velocity *= (1.0 - damping); 
+    p.velocity.xyz *= (1.0 - damping * deltaTime);
 
-    p.position += p.velocity * deltaTime;
+    p.positionAndInvMass.xyz += p.velocity.xyz * deltaTime;
+
+    p.positionAndInvMass.xyz = ValidateFloat3(p.positionAndInvMass.xyz);
+    p.velocity.xyz = ValidateFloat3(p.velocity.xyz);
     
     particles[index] = p;
 }
@@ -123,11 +142,11 @@ void SolveConstraints(uint3 id : SV_DispatchThreadID)
     Particle pB = particles[c.particleB];
     
     // Skip if both particles are fixed
-    if (pA.invMass == 0.0 && pB.invMass == 0.0) return;
+    if (pA.positionAndInvMass.w == 0.0 && pB.positionAndInvMass.w == 0.0) return;
     
     // Calculate constraint violation
-    float3 delta = pB.position - pA.position;
-    float currentLength = length(delta);
+    float3 delta = pB.positionAndInvMass.xyz - pA.positionAndInvMass.xyz;
+    float currentLength = SafeLength(delta);
     
     // Skip degenerate constraints
     if (currentLength < 0.0001 || c.restLength < 0.0001) return;
@@ -143,37 +162,46 @@ void SolveConstraints(uint3 id : SV_DispatchThreadID)
     alphaTilde = max(alphaTilde, 1e-10);
     
     // Calculate effective masses
-    float wA = pA.invMass;
-    float wB = pB.invMass;
+    float wA = pA.positionAndInvMass.w;
+    float wB = pB.positionAndInvMass.w;
     float totalInvMass = wA + wB;
     
     if (totalInvMass < 0.0001) return;
     
     // XPBD solving equation
     float deltaLambda = (-constraintError - alphaTilde * c.lambda) / 
-                       (totalInvMass + alphaTilde);
+                       (totalInvMass + alphaTilde + 1e-9);
     
     // Clamp delta lambda to prevent explosions
-    float maxCorrection = c.restLength * 0.1; // 10% of rest length
-    deltaLambda = clamp(deltaLambda, -maxCorrection, maxCorrection);
+  //  float maxCorrection = c.restLength * 0.1; // 10% of rest length
+ //   deltaLambda = clamp(deltaLambda, -maxCorrection, maxCorrection);
     
     // Update accumulated lambda
     c.lambda += deltaLambda;
     
     // Optional: clamp total lambda to prevent drift
-    c.lambda = clamp(c.lambda, -100.0, 100.0);
+   // c.lambda = clamp(c.lambda, -100.0, 100.0);
     
     // Apply position corrections
     float3 correction = deltaLambda * direction;
-    
-    if (pA.invMass > 0.0)
+
+    float maxCorrectionMag = c.restLength * 0.2;
+    float correctionMag = length(correction);
+    if (correctionMag > maxCorrectionMag)
     {
-        pA.position -= correction * pA.invMass;
+        correction = correction * (maxCorrectionMag / correctionMag);
     }
     
-    if (pB.invMass > 0.0)
+    if (pA.positionAndInvMass.w > 0.0)
     {
-        pB.position += correction * pB.invMass;
+        pA.positionAndInvMass.xyz -= correction * pA.positionAndInvMass.w;
+        pA.positionAndInvMass.xyz = ValidateFloat3(pA.positionAndInvMass.xyz);
+    }
+
+    if (pB.positionAndInvMass.w > 0.0)
+    {
+        pB.positionAndInvMass.xyz += correction * pB.positionAndInvMass.w;
+        pB.positionAndInvMass.xyz = ValidateFloat3(pB.positionAndInvMass.xyz);
     }
     
     // Write back
@@ -188,7 +216,7 @@ void UpdateMesh(uint3 id : SV_DispatchThreadID)
     uint index = id.x;
     if (index >= (uint)particleCount) return;
     
-    float3 position = particles[index].position;
+    float3 position = particles[index].positionAndInvMass.xyz;
     
     // Validate position before writing to vertex buffer
     if (any(isnan(position)) || any(isinf(position)))
@@ -210,30 +238,6 @@ void DecayLambdas(uint3 id : SV_DispatchThreadID)
     constraints[index].lambda *= lambdaDecay;
 }
 
-[numthreads(1, 1, 1)]
-void ValidatecolourGroups(uint3 id : SV_DispatchThreadID)
-{
-    // Run single-threaded validation
-    for (int i = 0; i < constraintCount; i++)
-    {
-        Constraint c1 = constraints[i];
-        for (int j = i + 1; j < constraintCount; j++)
-        {
-            Constraint c2 = constraints[j];
-            
-            // Check if constraints in same colour group share particles
-            if (c1.colourGroup == c2.colourGroup)
-            {
-                if (c1.particleA == c2.particleA || c1.particleA == c2.particleB ||
-                    c1.particleB == c2.particleA || c1.particleB == c2.particleB)
-                {
-                    // RACE CONDITION DETECTED!
-                    // Log this error somehow (atomic counter, debug buffer, etc.)
-                }
-            }
-        }
-    }
-}
 
 [numthreads(1, 1, 1)]
 void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
@@ -250,7 +254,7 @@ void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
         float vel = length(p.velocity);
         maxVel = max(maxVel, vel);
         
-        if (abs(p.position.y - floorY) < 0.01)
+        if (abs(p.positionAndInvMass.y - floorY) < 0.01)
         {
             groundCount++;
         }
@@ -263,7 +267,7 @@ void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
         Particle pA = particles[c.particleA];
         Particle pB = particles[c.particleB];
         
-        float3 delta = pB.position - pA.position;
+        float3 delta = pB.positionAndInvMass.xyz - pA.positionAndInvMass.xyz;
         float currentLength = length(delta);
         float error = abs(currentLength - c.restLength);
         maxError = max(maxError, error);
@@ -273,6 +277,56 @@ void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
     debugBuffer[0] = float4(maxVel, maxError, totalLambda / constraintCount, groundCount);
 }
 
+
+[numthreads(1, 1, 1)]
+void DebugAndValidateParticles(uint3 id : SV_DispatchThreadID)
+{
+    // debugBuffer[0].x = nanCount
+    // debugBuffer[0].y = infCount
+    // debugBuffer[0].z = maxSpeed
+    // debugBuffer[0].w = firstBadIndex
+    
+    // Reset debug values
+    debugBuffer[0] = float4(0, 0, 0, -1);
+
+    int nanCount = 0;
+    int infCount = 0;
+    float maxSpeedSq = 0;
+    int firstBadIndex = -1;
+
+    for (uint i = 0; i < (uint)particleCount; i++)
+    {
+        Particle p = particles[i];
+        
+        // Check for NaN
+        if (any(isnan(p.positionAndInvMass.xyz)) || any(isnan(p.velocity)))
+        {
+            nanCount++;
+            if (firstBadIndex == -1) firstBadIndex = i;
+        }
+        
+        // Check for Infinity
+        if (any(isinf(p.positionAndInvMass.xyz)) || any(isinf(p.velocity)))
+        {
+            infCount++;
+            if (firstBadIndex == -1) firstBadIndex = i;
+        }
+
+        // Check for crazy velocities
+        float speedSq = dot(p.velocity, p.velocity);
+        if (speedSq > maxSpeedSq)
+        {
+            maxSpeedSq = speedSq;
+        }
+    }
+
+    debugBuffer[0].x = nanCount;
+    debugBuffer[0].y = infCount;
+    debugBuffer[0].z = sqrt(maxSpeedSq);
+    debugBuffer[0].w = firstBadIndex;
+}
+
+
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void SolveCollisionConstraints(uint3 id : SV_DispatchThreadID)
 {
@@ -280,29 +334,33 @@ void SolveCollisionConstraints(uint3 id : SV_DispatchThreadID)
     if (index >= (uint)particleCount) return;
     
     Particle p = particles[index];
-    if (p.invMass <= 0.0) return;
+    if (p.positionAndInvMass.w <= 0.0) return;
 
-    // --- SDF for a floor plane ---
-    float penetration = p.position.y - floorY;
+    float penetration = floorY -p.positionAndInvMass.xyz.y;
     
-    // We have an inequality constraint C >= 0.
-    // The constraint is violated if penetration < 0.
-    if (penetration < 0.0)
+    if (penetration > 0.0)
     {
-        // C is the penetration depth, which is negative here. We want to correct it to be >= 0.
-        float C = penetration;
-        float3 normal = float3(0, 1, 0); // Gradient of the plane SDF
-        float w = p.invMass;
-
-        // Note: For inequality, we don't use lambda accumulation from previous frames.
-        // It's a one-shot correction.
+        // Soft constraint-based collision
+        float3 normal = float3(0, 1, 0);
+        float w = p.positionAndInvMass.w;
+        
+        // Use a very small compliance for floor (nearly rigid)
         float alphaTilde = collisionCompliance / (deltaTime * deltaTime);
-        float deltaLambda = -C / (w + alphaTilde);
-
+        float deltaLambda = penetration / (w + alphaTilde);
+        
+        // Limit correction to prevent overshooting
+        deltaLambda = min(deltaLambda, penetration);
+        
         // Apply correction
-        p.position += deltaLambda * w * normal;
-
-        // Write back
+       p.positionAndInvMass.xyz += deltaLambda * w * normal;
+        
+        // Apply restitution and friction to velocity
+        if (p.velocity.y < 0)
+        {
+            p.velocity.y *= -0.2; // 20% restitution
+            p.velocity.xz *= 0.8; // 20% friction
+        }
+        
         particles[index] = p;
     }
 }
@@ -319,22 +377,27 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
     Particle p3 = particles[vc.p3];
     Particle p4 = particles[vc.p4];
 
-    float w1 = p1.invMass;
-    float w2 = p2.invMass;
-    float w3 = p3.invMass;
-    float w4 = p4.invMass;
+    float w1 = p1.positionAndInvMass.w;
+    float w2 = p2.positionAndInvMass.w;
+    float w3 = p3.positionAndInvMass.w;
+    float w4 = p4.positionAndInvMass.w;
     float totalInvMass = w1 + w2 + w3 + w4;
     if (totalInvMass < 0.0001) return;
 
     // Calculate gradients of the volume constraint
-    float3 grad1 = cross(p2.position - p4.position, p3.position - p4.position) / 6.0;
-    float3 grad2 = cross(p3.position - p4.position, p1.position - p4.position) / 6.0;
-    float3 grad3 = cross(p1.position - p4.position, p2.position - p4.position) / 6.0;
+    float3 grad1 = cross(p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz) / 6.0;
+    float3 grad2 = cross(p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, p1.positionAndInvMass.xyz - p4.positionAndInvMass.xyz) / 6.0;
+    float3 grad3 = cross(p1.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz) / 6.0;
     float3 grad4 = -grad1 - grad2 - grad3;
 
     // Constraint error (current volume - rest volume)
-    float currentVolume = dot(p1.position - p4.position, cross(p2.position - p4.position, p3.position - p4.position)) / 6.0;
+    float currentVolume = dot(p1.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, cross(p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz)) / 6.0;
     float C = currentVolume - vc.restVolume;
+
+    if (abs(C) < 0.0001 * vc.restVolume) return;
+
+    // Clamp the constraint error to prevent explosions
+    C = clamp(C, -vc.restVolume * 0.5, vc.restVolume * 0.5);
     
     // Weighted sum of squared gradient magnitudes
     float grad_sum = w1 * dot(grad1, grad1) + w2 * dot(grad2, grad2) + w3 * dot(grad3, grad3) + w4 * dot(grad4, grad4);
@@ -348,10 +411,15 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
     vc.lambda += deltaLambda;
 
     // Apply corrections
-    if (w1 > 0.0) p1.position += w1 * deltaLambda * grad1;
-    if (w2 > 0.0) p2.position += w2 * deltaLambda * grad2;
-    if (w3 > 0.0) p3.position += w3 * deltaLambda * grad3;
-    if (w4 > 0.0) p4.position += w4 * deltaLambda * grad4;
+    if (w1 > 0.0) p1.positionAndInvMass.xyz += w1 * deltaLambda * grad1;
+    if (w2 > 0.0) p2.positionAndInvMass.xyz += w2 * deltaLambda * grad2;
+    if (w3 > 0.0) p3.positionAndInvMass.xyz += w3 * deltaLambda * grad3;
+    if (w4 > 0.0) p4.positionAndInvMass.xyz += w4 * deltaLambda * grad4;
+
+    p1.positionAndInvMass.xyz = ValidatePosition(p1.positionAndInvMass.xyz);
+    p2.positionAndInvMass.xyz = ValidatePosition(p2.positionAndInvMass.xyz);
+    p3.positionAndInvMass.xyz = ValidatePosition(p3.positionAndInvMass.xyz);
+    p4.positionAndInvMass.xyz = ValidatePosition(p4.positionAndInvMass.xyz);
 
     // Write back
     particles[vc.p1] = p1;
@@ -368,12 +436,28 @@ void UpdateVelocities(uint3 id : SV_DispatchThreadID)
     if (index >= (uint)particleCount) return;
 
     Particle p = particles[index];
-    if (p.invMass <= 0.0) return;
+    if (p.positionAndInvMass.w <= 0.0) return;
 
     float3 prevPos = previousPositions[index];
+   
+    if (deltaTime < 1e-6)
+    {
+        p.velocity.xyz = float3(0, 0, 0); // Reset velocity if timestep is invalid
+    }
+    else
+    {
+        float3 position = p.positionAndInvMass.xyz - prevPos;
+        p.velocity.xyz = position / deltaTime;
+    }
     
-    // Recalculate velocity based on the total position change during the substep
-    p.velocity = (p.position - prevPos) / deltaTime;
+    float maxSpeed = 20.0; 
+    float speed = length(p.velocity);
+    if (speed > maxSpeed)
+    {
+        p.velocity.xyz = (p.velocity.xyz / speed) * maxSpeed;
+    }
 
+    p.velocity.xyz = ValidateFloat3(p.velocity.xyz);
+    
     particles[index] = p;
 }

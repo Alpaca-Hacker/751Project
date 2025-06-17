@@ -11,6 +11,7 @@ namespace SoftBody.Scripts
     public class SoftBodyPhysics : MonoBehaviour
     {
         
+
         [SerializeField] private SoftBodySettings settings = new ();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
@@ -37,6 +38,7 @@ namespace SoftBody.Scripts
         private int _kernelSolveCollisionConstraints;
         private int _kernelVolumeConstraints;
         private int _kernelUpdateVelocities;
+        private int _kernelDebugAndValidate;
         
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
@@ -85,6 +87,7 @@ namespace SoftBody.Scripts
             _kernelVolumeConstraints = computeShader.FindKernel("SolveVolumeConstraints");
             _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
             _kernelUpdateVelocities = computeShader.FindKernel("UpdateVelocities");
+            _kernelDebugAndValidate = computeShader.FindKernel("DebugAndValidateParticles");
 
             // Verify all kernels were found
             if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
@@ -127,8 +130,8 @@ namespace SoftBody.Scripts
                         var particle = new Particle
                         {
                             Position = transform.TransformPoint(pos),
-                            Velocity = Vector3.zero,
-                            Force = Vector3.zero,
+                            Velocity = Vector4.zero,
+                            Force = Vector4.zero,
                             InvMass = 1f / settings.mass
                         };
 
@@ -426,13 +429,42 @@ namespace SoftBody.Scripts
                 meshRenderer = gameObject.AddComponent<MeshRenderer>();
             }
 
-            if (renderMaterial == null)
+            // Use the assigned material, or fallback to default
+            if (renderMaterial != null)
             {
-                renderMaterial = new Material(Shader.Find("Standard"));
-                renderMaterial.color = Color.cyan;
+                meshRenderer.material = renderMaterial;
+                Debug.Log($"Applied custom material: {renderMaterial.name}");
+            }
+            else
+            {
+                // Fallback material for URP
+                var fallbackMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                fallbackMaterial.color = Color.cyan;
+                meshRenderer.material = fallbackMaterial;
+                Debug.LogWarning("No material assigned! Using fallback URP/Lit material. Please assign a material in the SoftBodySettings.");
             }
 
-            meshRenderer.material = renderMaterial;
+            // Ensure proper lighting setup
+            SetupLighting();
+        }
+
+        private void SetupLighting()
+        {
+            // Ensure the mesh has proper normals for lighting
+            if (_mesh != null)
+            {
+                _mesh.RecalculateNormals();
+                _mesh.RecalculateTangents(); // Important for normal mapping in URP
+            }
+
+            // Optional: Add a MeshCollider for more accurate lighting interactions
+            var meshCollider = GetComponent<MeshCollider>();
+            if (meshCollider == null && settings.enableCollision)
+            {
+                meshCollider = gameObject.AddComponent<MeshCollider>();
+                meshCollider.convex = true; // Required for soft body physics
+                meshCollider.sharedMesh = _mesh;
+            }
         }
 
         private void Update()
@@ -443,7 +475,7 @@ namespace SoftBody.Scripts
                 return;
             }
 
-            if (computeShader == null)
+            if (!computeShader)
             {
                 Debug.LogError("Compute Shader not assigned to SoftBodySimulator!");
                 return;
@@ -455,12 +487,17 @@ namespace SoftBody.Scripts
                 return;
             }
             
+            if(renderMaterial && _vertexBuffer != null)
+            {
+                renderMaterial.SetBuffer(Constants.Vertices, _vertexBuffer);
+            }
+            
             var targetDeltaTime = 1f / 120f; // 120 Hz physics
             var frameTime = Time.deltaTime;
 
             // Subdivide large frames into small steps
             var substeps = Mathf.CeilToInt(frameTime / targetDeltaTime);
-            substeps = Mathf.Clamp(substeps, 1, 4); // Max 4 substeps per frame
+            substeps = Mathf.Clamp(substeps, 1, 10); // Max 10 substeps per frame
 
             var substepDeltaTime = frameTime / substeps;
 
@@ -508,9 +545,12 @@ namespace SoftBody.Scripts
                     {
                         computeShader.Dispatch(_kernelSolveConstraints, constraintThreadGroups, 1, 1);
                     }
+                    
+                    if (_volumeConstraints.Count > 0 && colourGroup == 0)
+                    {
+                        computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
+                    }
                 }
-                
-                computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
                 
                 computeShader.Dispatch(_kernelSolveCollisionConstraints, particleThreadGroups, 1, 1);
             }
@@ -529,14 +569,30 @@ namespace SoftBody.Scripts
                 }
             }
             
-            computeShader.Dispatch(_kernelComputeDiagnostics, 1, 1, 1);
+            // computeShader.Dispatch(_kernelComputeDiagnostics, 1, 1, 1);
+            //
+            // if (Time.frameCount % 30 == 0 && settings.debugMode)
+            // {
+            //     var debugData = new float[4];
+            //     _debugBuffer.GetData(debugData);
+            //     Debug.Log($"Diagnostics - MaxVel: {debugData[0]:F3}, MaxError: {debugData[1]:F3}, " +
+            //               $"AvgLambda: {debugData[2]:F3}, GroundParticles: {debugData[3]}");
+            // }
             
-            if (Time.frameCount % 30 == 0 && settings.debugMode)
+            computeShader.Dispatch(_kernelDebugAndValidate, 1, 1, 1);
+            
+            if (Time.frameCount % 10 == 0 && settings.debugMode)
             {
                 var debugData = new float[4];
                 _debugBuffer.GetData(debugData);
-                Debug.Log($"Diagnostics - MaxVel: {debugData[0]:F3}, MaxError: {debugData[1]:F3}, " +
-                          $"AvgLambda: {debugData[2]:F3}, GroundParticles: {debugData[3]}");
+                if (debugData[0] > 0 || debugData[1] > 0)
+                {
+                    Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, First Bad Particle Index: {debugData[3]}");
+                }
+                else
+                {
+                    Debug.Log($"System stable. Max Speed: {debugData[2]:F2}");
+                }
             }
         }
 
@@ -564,7 +620,11 @@ namespace SoftBody.Scripts
             
             computeShader.SetBuffer(_kernelUpdateVelocities, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelUpdateVelocities, Constants.PreviousPositions, _previousPositionsBuffer);
+            
+            computeShader.SetBuffer(_kernelDebugAndValidate, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelDebugAndValidate, Constants.DebugBuffer, _debugBuffer);
         }
+        
 
         private void SetComputeShaderParameters(float deltaTime)
         {
@@ -580,6 +640,7 @@ namespace SoftBody.Scripts
             computeShader.SetInt(Constants.VolumeConstraintCount, _volumeConstraints.Count);
             computeShader.SetFloat(Constants.CollisionCompliance, settings.collisionCompliance);
         }
+        
 
         private int GetMaxColourGroup()
         {
@@ -590,6 +651,8 @@ namespace SoftBody.Scripts
         {
             _volumeConstraints = new List<VolumeConstraint>();
             var res = settings.resolution;
+            
+            var particleVolumeCount = new int[_particles.Count];
             var compliance = settings.volumeCompliance;
 
             for (var x = 0; x < res - 1; x++)
@@ -832,7 +895,7 @@ namespace SoftBody.Scripts
         private void ProcessVertexData(Unity.Collections.NativeArray<float> vertexData)
         {
             var vertices = new Vector3[_particles.Count];
-            var centerOffset = Vector3.zero;
+            var centreOffset = Vector3.zero;
             var worldPositions = new Vector3[_particles.Count];
 
             // First pass: read positions and check validity
@@ -854,29 +917,37 @@ namespace SoftBody.Scripts
                 }
 
                 worldPositions[i] = worldPos;
-                centerOffset += worldPos;
+                centreOffset += worldPos;
             }
 
             // Calculate center of mass
-            centerOffset /= _particles.Count;
+            centreOffset /= _particles.Count;
 
             // Update transform to follow center of mass
-            transform.position = centerOffset;
+            transform.position = centreOffset;
 
             // Convert to local coordinates
             for (var i = 0; i < _particles.Count; i++)
             {
-                vertices[i] = worldPositions[i] - centerOffset;
+                vertices[i] = worldPositions[i] - centreOffset;
             }
 
             try
             {
                 _mesh.vertices = vertices;
                 _mesh.RecalculateNormals();
+                _mesh.RecalculateTangents();
                 _mesh.RecalculateBounds();
 
                 // Force mesh filter update
                 GetComponent<MeshFilter>().mesh = _mesh;
+
+                // Update collider if present
+                var meshCollider = GetComponent<MeshCollider>();
+                if (meshCollider)
+                {
+                    meshCollider.sharedMesh = _mesh;
+                }
             }
             catch (System.Exception e)
             {
@@ -890,8 +961,8 @@ namespace SoftBody.Scripts
             for (var i = 0; i < _particles.Count; i++)
             {
                 var p = _particles[i];
-                p.Velocity = Vector3.zero;
-                p.Force = Vector3.zero;
+                p.Velocity = Vector4.zero;
+                p.Force = Vector4.zero;
                 // Keep original position but reset physics state
                 _particles[i] = p;
             }
@@ -942,7 +1013,11 @@ namespace SoftBody.Scripts
                 {
                     var falloff = 1f - (distance / radius);
                     var p = _particles[i];
-                    p.Force += force * falloff;
+                    var forceToApply = force * falloff;
+                    p.Force.x = forceToApply.x;
+                    p.Force.y = forceToApply.y;
+                    p.Force.z = forceToApply.z;
+                    
                     _particles[i] = p;
                 }
             }
