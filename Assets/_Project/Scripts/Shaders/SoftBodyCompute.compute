@@ -2,11 +2,21 @@
 #pragma kernel SolveConstraints
 #pragma kernel UpdateMesh
 #pragma kernel DecayLambdas
-#pragma kernel ComputeDiagnostics
-#pragma kernel SolveCollisionConstraints
 #pragma kernel SolveVolumeConstraints
 #pragma kernel UpdateVelocities
 #pragma kernel DebugAndValidateParticles
+#pragma kernel SolveGeneralCollisions
+
+#define COLLIDER_TYPE_SPHERE 0
+#define COLLIDER_TYPE_PLANE 1
+
+struct SDFCollider
+{
+    float4 data1;
+    float4 data2;
+    int type;
+    int _padding1, _padding2, _padding3;
+};
 
 struct Particle
 {
@@ -40,6 +50,7 @@ RWStructuredBuffer<float3> vertices;
 RWStructuredBuffer<float4> debugBuffer;
 RWStructuredBuffer<VolumeConstraint> volumeConstraints;
 RWStructuredBuffer<float3> previousPositions;
+StructuredBuffer<SDFCollider> colliders;
 
 // Parameters
 float deltaTime;
@@ -48,11 +59,13 @@ float damping;
 int particleCount;
 int constraintCount;
 float3 worldPosition;
-float floorY;
+int colliderCount;
 int currentColourGroup;
 float lambdaDecay;
 int volumeConstraintCount;
+
 float collisionCompliance;
+
 
 // Thread group size
 #define THREAD_GROUP_SIZE 64
@@ -99,6 +112,20 @@ float3 ValidatePosition(float3 pos)
     const float MAX_WORLD_SIZE = 1000.0;
     return clamp(pos, -MAX_WORLD_SIZE, MAX_WORLD_SIZE);
 }
+
+// --- SDF Helper Functions ---
+
+float sdf_sphere(float3 p, float3 center, float radius)
+{
+    return length(p - center) - radius;
+}
+
+float sdf_plane(float3 p, float3 normal, float distance)
+{
+    // distance is the plane's distance from the origin along its normal
+    return dot(p, normal) - distance;
+}
+
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void IntegrateAndStorePositions(uint3 id : SV_DispatchThreadID)
@@ -238,46 +265,6 @@ void DecayLambdas(uint3 id : SV_DispatchThreadID)
     constraints[index].lambda *= lambdaDecay;
 }
 
-
-[numthreads(1, 1, 1)]
-void ComputeDiagnostics(uint3 id : SV_DispatchThreadID)
-{
-    float maxVel = 0.0;
-    float maxError = 0.0;
-    float totalLambda = 0.0;
-    int groundCount = 0;
-    
-    // Check particle velocities and ground contact
-    for (uint i = 0; i < (uint)particleCount; i++)
-    {
-        Particle p = particles[i];
-        float vel = length(p.velocity);
-        maxVel = max(maxVel, vel);
-        
-        if (abs(p.positionAndInvMass.y - floorY) < 0.01)
-        {
-            groundCount++;
-        }
-    }
-    
-    // Check constraint errors
-    for (uint j = 0; j < (uint)constraintCount; j++)
-    {
-        Constraint c = constraints[j];
-        Particle pA = particles[c.particleA];
-        Particle pB = particles[c.particleB];
-        
-        float3 delta = pB.positionAndInvMass.xyz - pA.positionAndInvMass.xyz;
-        float currentLength = length(delta);
-        float error = abs(currentLength - c.restLength);
-        maxError = max(maxError, error);
-        totalLambda += abs(c.lambda);
-    }
-    
-    debugBuffer[0] = float4(maxVel, maxError, totalLambda / constraintCount, groundCount);
-}
-
-
 [numthreads(1, 1, 1)]
 void DebugAndValidateParticles(uint3 id : SV_DispatchThreadID)
 {
@@ -326,44 +313,6 @@ void DebugAndValidateParticles(uint3 id : SV_DispatchThreadID)
     debugBuffer[0].w = firstBadIndex;
 }
 
-
-[numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void SolveCollisionConstraints(uint3 id : SV_DispatchThreadID)
-{
-    uint index = id.x;
-    if (index >= (uint)particleCount) return;
-    
-    Particle p = particles[index];
-    if (p.positionAndInvMass.w <= 0.0) return;
-
-    float penetration = floorY -p.positionAndInvMass.xyz.y;
-    
-    if (penetration > 0.0)
-    {
-        // Soft constraint-based collision
-        float3 normal = float3(0, 1, 0);
-        float w = p.positionAndInvMass.w;
-        
-        // Use a very small compliance for floor (nearly rigid)
-        float alphaTilde = collisionCompliance / (deltaTime * deltaTime);
-        float deltaLambda = penetration / (w + alphaTilde);
-        
-        // Limit correction to prevent overshooting
-        deltaLambda = min(deltaLambda, penetration);
-        
-        // Apply correction
-       p.positionAndInvMass.xyz += deltaLambda * w * normal;
-        
-        // Apply restitution and friction to velocity
-        if (p.velocity.y < 0)
-        {
-            p.velocity.y *= -0.2; // 20% restitution
-            p.velocity.xz *= 0.8; // 20% friction
-        }
-        
-        particles[index] = p;
-    }
-}
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
@@ -429,6 +378,7 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
     volumeConstraints[index] = vc;
 }
 
+// The clean, correct UpdateVelocities kernel
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void UpdateVelocities(uint3 id : SV_DispatchThreadID)
 {
@@ -439,25 +389,99 @@ void UpdateVelocities(uint3 id : SV_DispatchThreadID)
     if (p.positionAndInvMass.w <= 0.0) return;
 
     float3 prevPos = previousPositions[index];
+    float3 newVelocity;
    
     if (deltaTime < 1e-6)
     {
-        p.velocity.xyz = float3(0, 0, 0); // Reset velocity if timestep is invalid
+        newVelocity = float3(0, 0, 0);
     }
     else
     {
-        float3 position = p.positionAndInvMass.xyz - prevPos;
-        p.velocity.xyz = position / deltaTime;
+        newVelocity = (p.positionAndInvMass.xyz - prevPos) / deltaTime;
     }
     
+    // Optional but recommended safety clamp
     float maxSpeed = 20.0; 
-    float speed = length(p.velocity);
+    float speed = length(newVelocity);
     if (speed > maxSpeed)
     {
-        p.velocity.xyz = (p.velocity.xyz / speed) * maxSpeed;
+        newVelocity = (newVelocity / speed) * maxSpeed;
     }
 
-    p.velocity.xyz = ValidateFloat3(p.velocity.xyz);
-    
+    p.velocity.xyz = ValidateFloat3(newVelocity);
     particles[index] = p;
 }
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
+{
+    uint p_idx = id.x;
+    if (p_idx >= (uint)particleCount) return;
+    
+    Particle p = particles[p_idx];
+    if (p.positionAndInvMass.w <= 0.0) return;
+
+    // Iterate through all colliders for this one particle
+    for (int c_idx = 0; c_idx < colliderCount; c_idx++)
+    {
+        SDFCollider c = colliders[c_idx];
+        
+        float3 pos = p.positionAndInvMass.xyz;
+        float penetration = 0;
+        float3 normal = float3(0,1,0); // Default normal
+
+        // --- 1. Calculate SDF distance and normal based on collider type ---
+        if (c.type == COLLIDER_TYPE_SPHERE)
+        {
+            float3 center = c.data1.xyz;
+            float radius = c.data1.w;
+            penetration = sdf_sphere(pos, center, radius);
+            if (penetration < 0)
+            {
+                normal = SafeNormalize(pos - center);
+            }
+        }
+        else if (c.type == COLLIDER_TYPE_PLANE)
+        {
+            float3 plane_normal = c.data1.xyz;
+            float plane_dist = c.data1.w;
+            penetration = sdf_plane(pos, plane_normal, plane_dist);
+            if (penetration < 0)
+            {
+                normal = plane_normal;
+            }
+        }
+
+        // --- 2. If penetrating, solve the XPBD constraint ---
+        if (penetration < 0)
+        {
+            p.positionAndInvMass.xyz -= penetration * normal; // Hard projection for simplicity and stability
+            
+            float3 vel = p.velocity.xyz;
+            float vel_normal_comp = dot(vel, normal);
+
+            // Only act if velocity is moving into the collider
+            if (vel_normal_comp < 0)
+            {
+                float3 vel_tangent_comp = vel - vel_normal_comp * normal;
+
+                // Apply friction
+                float friction_coeff = 0.5;
+                float friction_impulse = length(vel_tangent_comp) * friction_coeff;
+                vel_tangent_comp = max(0, length(vel_tangent_comp) - friction_impulse) * SafeNormalize(vel_tangent_comp);
+
+                // Apply restitution (bounciness)
+                float restitution_coeff = 0.2;
+                vel_normal_comp *= -restitution_coeff;
+
+                // Combine back into new velocity
+                p.velocity.xyz = vel_tangent_comp + vel_normal_comp * normal;
+            }
+        }
+    }
+
+    // Write the final corrected position back
+    particles[p_idx] = p;
+}
+
+

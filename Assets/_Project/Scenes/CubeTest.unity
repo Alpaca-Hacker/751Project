@@ -4066,13 +4066,14 @@ MonoBehaviour:
     mass: 1
     damping: 0.03
     gravity: 0
-    lambdaDecay: 0.98
+    lambdaDecay: 0
     solverIterations: 15
-    structuralCompliance: 0.00001
-    shearCompliance: 0.0001
-    bendCompliance: 0.001
-    volumeCompliance: 0.00001
-    collisionCompliance: 0
+    structuralCompliance: 0.0001
+    shearCompliance: 0.001
+    bendCompliance: 0.01
+    volumeCompliance: 0.0001
+    floorTransform: {fileID: 192215456}
+    collisionCompliance: 0.00001
     enableCollision: 1
     collisionLayers:
       serializedVersion: 2
@@ -4080,7 +4081,7 @@ MonoBehaviour:
     useCPUFallback: 0
     debugMode: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
-  renderMaterial: {fileID: 2100000, guid: 1678bd2c87a054b4486df20f956434e3, type: 2}
+  renderMaterial: {fileID: 2100000, guid: fdacfbae24d30ee4b824d4f347c7bb0f, type: 2}
 --- !u!23 &1094367041
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4104,7 +4105,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: fdacfbae24d30ee4b824d4f347c7bb0f, type: 2}
+  - {fileID: 2100000, guid: 2e42f005dcdb1734489870b7f7f82df4, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -4143,7 +4144,7 @@ Transform:
   m_GameObject: {fileID: 1094367039}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 2, z: 0}
+  m_LocalPosition: {x: 0, y: 0.5, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

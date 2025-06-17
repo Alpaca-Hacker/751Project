@@ -25,7 +25,8 @@ namespace SoftBody.Scripts
         public float bendCompliance = 0.01f; 
         public float volumeCompliance= 0.0001f;
         
-
+        [Header("Collision")]
+        public Transform floorTransform;
         public float collisionCompliance = 0.0f;
     
         [Header("Interaction")]

@@ -1,7 +1,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using SoftBody.Scripts.Models;
 using UnityEngine;
 using static System.Runtime.InteropServices.Marshal;
@@ -10,11 +9,10 @@ namespace SoftBody.Scripts
 {
     public class SoftBodyPhysics : MonoBehaviour
     {
-        
-
         [SerializeField] private SoftBodySettings settings = new ();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
+        
         
         private ComputeBuffer _particleBuffer;
         private ComputeBuffer _constraintBuffer;
@@ -23,22 +21,23 @@ namespace SoftBody.Scripts
         private ComputeBuffer _debugBuffer;
         private ComputeBuffer _volumeConstraintBuffer;
         private ComputeBuffer _previousPositionsBuffer;
+        private ComputeBuffer _colliderBuffer;
 
         private Mesh _mesh;
         private List<Particle> _particles;
         private List<Constraint> _constraints;
         private List<VolumeConstraint> _volumeConstraints;
         private List<int> _indices;
+        private List<SDFCollider> _colliders = new ();
 
         private int _kernelIntegrateAndStore;
         private int _kernelSolveConstraints;
         private int _kernelUpdateMesh;
         private int _kernelDecayLambdas;
-        private int _kernelComputeDiagnostics;
-        private int _kernelSolveCollisionConstraints;
         private int _kernelVolumeConstraints;
         private int _kernelUpdateVelocities;
         private int _kernelDebugAndValidate;
+        private int _kernelSolveGeneralCollisions;
         
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
@@ -82,12 +81,11 @@ namespace SoftBody.Scripts
             _kernelSolveConstraints = computeShader.FindKernel("SolveConstraints");
             _kernelUpdateMesh = computeShader.FindKernel("UpdateMesh");
             _kernelDecayLambdas = computeShader.FindKernel("DecayLambdas");
-            _kernelComputeDiagnostics = computeShader.FindKernel("ComputeDiagnostics");
-            _kernelSolveCollisionConstraints = computeShader.FindKernel("SolveCollisionConstraints");
             _kernelVolumeConstraints = computeShader.FindKernel("SolveVolumeConstraints");
             _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
             _kernelUpdateVelocities = computeShader.FindKernel("UpdateVelocities");
             _kernelDebugAndValidate = computeShader.FindKernel("DebugAndValidateParticles");
+            _kernelSolveGeneralCollisions = computeShader.FindKernel("SolveGeneralCollisions");
 
             // Verify all kernels were found
             if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
@@ -384,7 +382,7 @@ namespace SoftBody.Scripts
             _debugBuffer = new ComputeBuffer(1, sizeof(float) * 4);
             _volumeConstraintBuffer = new ComputeBuffer(_volumeConstraints.Count, SizeOf<VolumeConstraint>());
             _previousPositionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
-           
+            _colliderBuffer = new ComputeBuffer(64, SizeOf<SDFCollider>());
 
             // Upload initial data
             _particleBuffer.SetData(_particles);
@@ -515,6 +513,7 @@ namespace SoftBody.Scripts
         {
             
             SetComputeShaderParameters(deltaTime);
+            UpdateColliders();
             BindBuffers();
             
             // Integrate particles
@@ -551,8 +550,11 @@ namespace SoftBody.Scripts
                         computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
                     }
                 }
-                
-                computeShader.Dispatch(_kernelSolveCollisionConstraints, particleThreadGroups, 1, 1);
+
+                if (_colliders.Count > 0)
+                {
+                    computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
+                }
             }
             
             if (particleThreadGroups > 0)
@@ -568,16 +570,6 @@ namespace SoftBody.Scripts
                     computeShader.Dispatch(_kernelUpdateMesh, particleThreadGroups, 1, 1);
                 }
             }
-            
-            // computeShader.Dispatch(_kernelComputeDiagnostics, 1, 1, 1);
-            //
-            // if (Time.frameCount % 30 == 0 && settings.debugMode)
-            // {
-            //     var debugData = new float[4];
-            //     _debugBuffer.GetData(debugData);
-            //     Debug.Log($"Diagnostics - MaxVel: {debugData[0]:F3}, MaxError: {debugData[1]:F3}, " +
-            //               $"AvgLambda: {debugData[2]:F3}, GroundParticles: {debugData[3]}");
-            // }
             
             computeShader.Dispatch(_kernelDebugAndValidate, 1, 1, 1);
             
@@ -608,13 +600,6 @@ namespace SoftBody.Scripts
             computeShader.SetBuffer(_kernelUpdateMesh, Constants.Vertices, _vertexBuffer);
             computeShader.SetBuffer(_kernelDecayLambdas, Constants.Constraints, _constraintBuffer);
             
-            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.Constraints, _constraintBuffer);
-            
-            computeShader.SetBuffer(_kernelSolveCollisionConstraints, Constants.Particles, _particleBuffer);
-            
-            computeShader.SetBuffer(_kernelComputeDiagnostics, Constants.DebugBuffer, _debugBuffer);
-            
             computeShader.SetBuffer(_kernelVolumeConstraints, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelVolumeConstraints, Constants.VolumeConstraints, _volumeConstraintBuffer);
             
@@ -623,6 +608,9 @@ namespace SoftBody.Scripts
             
             computeShader.SetBuffer(_kernelDebugAndValidate, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelDebugAndValidate, Constants.DebugBuffer, _debugBuffer);
+            
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Colliders, _colliderBuffer);
         }
         
 
@@ -632,13 +620,53 @@ namespace SoftBody.Scripts
             computeShader.SetFloat(Constants.DeltaTime, deltaTime);
             computeShader.SetFloat(Constants.Gravity, settings.gravity);
             computeShader.SetFloat(Constants.Damping, settings.damping);
-            computeShader.SetFloat(Constants.FloorY, floorY);
             computeShader.SetVector(Constants.WorldPosition, transform.position);
             computeShader.SetInt(Constants.ParticleCount, _particles.Count);
             computeShader.SetInt(Constants.ConstraintCount, _constraints.Count);
             computeShader.SetFloat(Constants.LambdaDecay, settings.lambdaDecay);
             computeShader.SetInt(Constants.VolumeConstraintCount, _volumeConstraints.Count);
+            
             computeShader.SetFloat(Constants.CollisionCompliance, settings.collisionCompliance);
+        }
+
+        private void UpdateColliders()
+        {
+            _colliders.Clear();
+
+            if (settings.floorTransform)
+            {
+                var planeNormal = settings.floorTransform.up;
+        
+                // The distance of the plane from the world origin (0,0,0) is calculated
+                // by projecting the plane's position onto its own normal.
+                var planeDistance = Vector3.Dot(settings.floorTransform.position, planeNormal);
+
+                // Create the SDFCollider struct for the plane.
+                var floorPlane = SDFCollider.CreatePlane(planeNormal, planeDistance);
+                _colliders.Add(floorPlane);
+            }
+            else
+            {
+                // Fallback if no floor is assigned (uses the old raycast method)
+                var floorPlane = SDFCollider.CreatePlane(Vector3.up, 0);
+                _colliders.Add(floorPlane);
+            }
+            
+            
+            // Example: Find all GameObjects with a specific tag and add them
+            // foreach (var sphereCollider in FindObjectsOfType<SphereCollider>())
+            // {
+            //     if (_colliders.Count >= 64) break; // Don't exceed buffer capacity
+            //     var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position, sphereCollider.radius * sphereCollider.transform.lossyScale.x);
+            //     _colliders.Add(sphere);
+            // }
+
+            // Upload the data to the GPU
+            if (_colliders.Count > 0)
+            {
+                _colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
+            }
+            computeShader.SetInt(Constants.ColliderCount, _colliders.Count);
         }
         
 
@@ -984,6 +1012,7 @@ namespace SoftBody.Scripts
             _debugBuffer?.Release();
             _volumeConstraintBuffer?.Release();
             _previousPositionsBuffer?.Release();
+            _colliderBuffer?.Release();
             if (_mesh != null)
             {
                 Destroy(_mesh);
@@ -1001,6 +1030,8 @@ namespace SoftBody.Scripts
                 ResetToInitialPositions();
             }
         }
+
+        #region Designer Methods
 
         // Public methods for designer interaction
         public void AddForce(Vector3 force, Vector3 position, float radius = 1f)
@@ -1080,7 +1111,7 @@ namespace SoftBody.Scripts
             if (settings.useCPUFallback)
             {
                 Debug.Log("CPU mode - manually updating mesh...");
-               // UpdateCPU();
+                // UpdateCPU();
             }
         }
         
@@ -1181,6 +1212,8 @@ namespace SoftBody.Scripts
             SetupBuffers();
             Debug.Log("Simple test setup: 2 particles, 1 constraint");
         }
+
+        #endregion
         
     }
 }

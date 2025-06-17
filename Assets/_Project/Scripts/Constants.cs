@@ -21,5 +21,7 @@ namespace SoftBody.Scripts
         public static readonly int VolumeConstraints = Shader.PropertyToID("volumeConstraints");
         public static readonly int CollisionCompliance = Shader.PropertyToID("collisionCompliance");
         public static readonly int PreviousPositions = Shader.PropertyToID("previousPositions");
+        public static readonly int Colliders = Shader.PropertyToID("colliders");
+        public static readonly int ColliderCount = Shader.PropertyToID("colliderCount");
     }
 }
