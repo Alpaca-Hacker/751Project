@@ -22,6 +22,7 @@ namespace SoftBody.Scripts
         private ComputeBuffer _volumeConstraintBuffer;
         private ComputeBuffer _previousPositionsBuffer;
         private ComputeBuffer _colliderBuffer;
+        private ComputeBuffer _collisionCorrectionsBuffer;
 
         private Mesh _mesh;
         private List<Particle> _particles;
@@ -38,6 +39,8 @@ namespace SoftBody.Scripts
         private int _kernelUpdateVelocities;
         private int _kernelDebugAndValidate;
         private int _kernelSolveGeneralCollisions;
+        private int _kernelSolveGeneralCollisions_XPBD;
+        private int _kernelApplyCollisionCorrections;
         
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
@@ -86,6 +89,8 @@ namespace SoftBody.Scripts
             _kernelUpdateVelocities = computeShader.FindKernel("UpdateVelocities");
             _kernelDebugAndValidate = computeShader.FindKernel("DebugAndValidateParticles");
             _kernelSolveGeneralCollisions = computeShader.FindKernel("SolveGeneralCollisions");
+            _kernelSolveGeneralCollisions_XPBD = computeShader.FindKernel("SolveGeneralCollisions_XPBD");
+            _kernelApplyCollisionCorrections = computeShader.FindKernel("ApplyCollisionCorrections");
 
             // Verify all kernels were found
             if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
@@ -383,6 +388,7 @@ namespace SoftBody.Scripts
             _volumeConstraintBuffer = new ComputeBuffer(_volumeConstraints.Count, SizeOf<VolumeConstraint>());
             _previousPositionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _colliderBuffer = new ComputeBuffer(64, SizeOf<SDFCollider>());
+            _collisionCorrectionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
 
             // Upload initial data
             _particleBuffer.SetData(_particles);
@@ -553,7 +559,12 @@ namespace SoftBody.Scripts
 
                 if (_colliders.Count > 0)
                 {
-                    computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
+                   // computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
+                   // A) Find all collisions and calculate required corrections
+                   computeShader.Dispatch(_kernelSolveGeneralCollisions_XPBD, particleThreadGroups, 1, 1);
+            
+                   // B) Apply the positional corrections (with friction)
+                   computeShader.Dispatch(_kernelApplyCollisionCorrections, particleThreadGroups, 1, 1);
                 }
             }
             
@@ -611,6 +622,14 @@ namespace SoftBody.Scripts
             
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Colliders, _colliderBuffer);
+            
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, Constants.Colliders, _colliderBuffer);
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, "collisionCorrections", _collisionCorrectionsBuffer);
+
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, "collisionCorrections", _collisionCorrectionsBuffer);
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.PreviousPositions, _previousPositionsBuffer);
         }
         
 
@@ -1013,6 +1032,7 @@ namespace SoftBody.Scripts
             _volumeConstraintBuffer?.Release();
             _previousPositionsBuffer?.Release();
             _colliderBuffer?.Release();
+            _collisionCorrectionsBuffer?.Release();
             if (_mesh != null)
             {
                 Destroy(_mesh);

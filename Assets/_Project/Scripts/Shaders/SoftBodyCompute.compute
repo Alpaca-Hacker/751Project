@@ -484,4 +484,115 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
     particles[p_idx] = p;
 }
 
+#pragma kernel SolveGeneralCollisions_XPBD
+
+// A new buffer to store the corrections
+RWStructuredBuffer<float3> collisionCorrections;
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void SolveGeneralCollisions_XPBD(uint3 id : SV_DispatchThreadID)
+{
+    uint p_idx = id.x;
+    if (p_idx >= (uint)particleCount) return;
+
+    Particle p = particles[p_idx];
+    if (p.positionAndInvMass.w <= 0.0) return;
+    
+    // IMPORTANT: Clear the correction from the previous iteration/frame
+    collisionCorrections[p_idx] = float3(0,0,0);
+    int numCollisions = 0;
+
+    // Iterate through all colliders
+    for (int c_idx = 0; c_idx < colliderCount; c_idx++)
+    {
+        SDFCollider c = colliders[c_idx];
+        float3 pos = p.positionAndInvMass.xyz;
+        float penetration = 0;
+        float3 normal = float3(0,1,0);
+
+        if (c.type == COLLIDER_TYPE_SPHERE)
+        {
+            float3 center = c.data1.xyz;
+            float radius = c.data1.w;
+            penetration = sdf_sphere(pos, center, radius);
+            if (penetration < 0)
+            {
+                normal = SafeNormalize(pos - center);
+            }
+        }
+        else if (c.type == COLLIDER_TYPE_PLANE)
+        {
+            float3 plane_normal = c.data1.xyz;
+            float plane_dist = c.data1.w;
+            penetration = sdf_plane(pos, plane_normal, plane_dist);
+            if (penetration < 0)
+            {
+                normal = plane_normal;
+            }
+        }
+
+        if (penetration < 0)
+        {
+            // We have a collision. Calculate the positional correction needed.
+            // For multiple penetrating colliders, we want to average the correction.
+            
+            // The correction is simply the negative penetration depth along the normal.
+            collisionCorrections[p_idx] -= penetration * normal;
+            numCollisions++;
+        }
+    }
+    
+    // Average the corrections if there were multiple collisions
+    if (numCollisions > 1)
+    {
+        collisionCorrections[p_idx] /= numCollisions;
+    }
+}
+
+#pragma kernel ApplyCollisionCorrections
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
+{
+    uint p_idx = id.x;
+    if (p_idx >= (uint)particleCount) return;
+
+    // Read the correction calculated by the solver
+    float3 correction = collisionCorrections[p_idx];
+
+    // If there was a correction to be made...
+    if (dot(correction, correction) > 1e-6)
+    {
+        Particle p = particles[p_idx];
+        
+        // Apply the correction to the position
+        p.positionAndInvMass.xyz += correction;
+        
+        // --- FRICTION (The Jitter/Creep Killer) ---
+        // We can now calculate friction correctly.
+        // The 'correction' vector represents the impulse that was applied.
+        // Its magnitude is proportional to the normal force.
+        float3 prev_pos_after_integration = previousPositions[p_idx];
+        float3 vel_before_correction = (p.positionAndInvMass.xyz - correction - prev_pos_after_integration) / deltaTime;
+        
+        float3 normal = SafeNormalize(correction);
+        float3 vel_tangent = vel_before_correction - dot(vel_before_correction, normal) * normal;
+
+        float friction_coeff = 0.8; // High friction
+        float normal_force_proxy = length(correction);
+        float friction_magnitude = normal_force_proxy * friction_coeff;
+
+        // Apply friction as a positional change that counteracts tangential velocity
+        float3 friction_correction = -vel_tangent * deltaTime;
+        if(length(friction_correction) > friction_magnitude)
+        {
+            friction_correction = SafeNormalize(friction_correction) * friction_magnitude;
+        }
+
+        p.positionAndInvMass.xyz += friction_correction;
+        
+        particles[p_idx] = p;
+    }
+}
+
 
