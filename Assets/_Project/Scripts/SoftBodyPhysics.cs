@@ -233,15 +233,48 @@ namespace SoftBody.Scripts
             for (var i = 0; i < _constraints.Count; i++)
             {
                 var c = _constraints[i];
-                c.ColourGroup = 0;
+                c.ColourGroup = i;
                 _constraints[i] = c;
             }
-    
+            
+           /*
+                // This is a simple, stateless, and 100% correct coloring for a regular grid.
+                // It requires 8 colors and avoids all race conditions.
+                Debug.Log("Applying 8-way grid coloring.");
+            
+                var res = settings.resolution;
+            
+                for (int i = 0; i < _constraints.Count; i++)
+                {
+                    var c = _constraints[i];
+            
+                    // Get the grid coordinates (x,y,z) of the first particle in the constraint.
+                    int p_idx = c.ParticleA;
+                    int z = p_idx % res;
+                    int y = (p_idx / res) % res;
+                    int x = p_idx / (res * res);
+            
+                    // Determine the color based on the parity (even/odd) of the coordinates.
+                    // This creates a 3D checkerboard pattern.
+                    // (0,0,0) -> color 0
+                    // (1,0,0) -> color 1
+                    // (0,1,0) -> color 2
+                    // (1,1,0) -> color 3
+                    // ...and so on.
+                    int color = (x % 2) + (y % 2) * 2 + (z % 2) * 4;
+                    
+                    c.ColourGroup = color;
+                    _constraints[i] = c;
+                }
+            
+                Debug.Log("Grid coloring complete. Using 8 color groups.");
+           
+    */
             try
             {
                 // Try graph clustering
-                var clusters = GraphClusterer.CreateClusters(_constraints, _particles.Count);
-                GraphClusterer.ColourClusters(clusters, _constraints);
+                //var clusters = GraphClusterer.CreateClusters(_constraints, _particles.Count);
+                //GraphClusterer.ColourClusters(clusters, _constraints);
             }
             catch (System.Exception e)
             {
@@ -390,6 +423,12 @@ namespace SoftBody.Scripts
             _colliderBuffer = new ComputeBuffer(64, SizeOf<SDFCollider>());
             _collisionCorrectionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
 
+            ValidateAllData();
+            if (settings.useCPUFallback)
+            {
+                Debug.LogWarning("Using CPU fallback mode! Performance may be significantly reduced.");
+                return;
+            }
             // Upload initial data
             _particleBuffer.SetData(_particles);
             _constraintBuffer.SetData(_constraints);
@@ -496,12 +535,12 @@ namespace SoftBody.Scripts
                 renderMaterial.SetBuffer(Constants.Vertices, _vertexBuffer);
             }
             
-            var targetDeltaTime = 1f / 120f; // 120 Hz physics
+            var targetDeltaTime = 1f / 60f; // 60 Hz physics
             var frameTime = Time.deltaTime;
 
             // Subdivide large frames into small steps
             var substeps = Mathf.CeilToInt(frameTime / targetDeltaTime);
-            substeps = Mathf.Clamp(substeps, 1, 10); // Max 10 substeps per frame
+            substeps = Mathf.Clamp(substeps, 1, 100); // Max 10 substeps per frame
 
             var substepDeltaTime = frameTime / substeps;
 
@@ -519,7 +558,10 @@ namespace SoftBody.Scripts
         {
             
             SetComputeShaderParameters(deltaTime);
-            UpdateColliders();
+            if (settings.enableCollision)
+            {
+                 UpdateColliders();
+            }
             BindBuffers();
             
             // Integrate particles
@@ -1024,6 +1066,16 @@ namespace SoftBody.Scripts
 
         private void OnDestroy()
         {
+            ReleaseBuffers();
+            if (_mesh != null)
+            {
+                Destroy(_mesh);
+            }
+            
+        }
+        
+        private void ReleaseBuffers()
+        {
             _particleBuffer?.Release();
             _constraintBuffer?.Release();
             _vertexBuffer?.Release();
@@ -1033,11 +1085,18 @@ namespace SoftBody.Scripts
             _previousPositionsBuffer?.Release();
             _colliderBuffer?.Release();
             _collisionCorrectionsBuffer?.Release();
-            if (_mesh != null)
-            {
-                Destroy(_mesh);
-            }
-            
+    
+            // Set them to null so we know they are released
+            _particleBuffer = null; 
+            _constraintBuffer = null;
+            _vertexBuffer = null;
+            _indexBuffer = null;
+            _debugBuffer = null;
+            _volumeConstraintBuffer = null;
+            _previousPositionsBuffer = null;
+            _colliderBuffer = null;
+            _collisionCorrectionsBuffer = null;
+    
         }
 
         private void OnValidate()
@@ -1045,10 +1104,57 @@ namespace SoftBody.Scripts
             // Regenerate mesh when settings change in editor
             if (Application.isPlaying && _particles != null)
             {
+                
+                ReleaseBuffers();
+                
                 GenerateMesh();
                 SetupBuffers();
                 ResetToInitialPositions();
             }
+        }
+        
+        private void ValidateAllData()
+        {
+            int particleCount = _particles.Count;
+            if (particleCount == 0)
+            {
+                Debug.Log("Validation skipped: No particles.");
+                return;
+            }
+        
+            // --- Validate Constraints ---
+            for (int i = 0; i < _constraints.Count; i++)
+            {
+                Constraint c = _constraints[i];
+                if (c.ParticleA < 0 || c.ParticleA >= particleCount ||
+                    c.ParticleB < 0 || c.ParticleB >= particleCount)
+                {
+                    Debug.LogError($"CRITICAL ERROR IN CONSTRAINT DATA! Constraint at index {i} has invalid particle indices: A={c.ParticleA}, B={c.ParticleB}. Particle count is {particleCount}. THIS WILL CAUSE A GPU CRASH.");
+                    settings.useCPUFallback = true; // Halt simulation
+                    return;
+                }
+                if (c.RestLength <= 0)
+                {
+                    Debug.LogWarning($"Constraint at index {i} has zero or negative rest length: {c.RestLength}");
+                }
+            }
+        
+            // --- Validate Volume Constraints ---
+            for (int i = 0; i < _volumeConstraints.Count; i++)
+            {
+                VolumeConstraint vc = _volumeConstraints[i];
+                if (vc.P1 < 0 || vc.P1 >= particleCount ||
+                    vc.P2 < 0 || vc.P2 >= particleCount ||
+                    vc.P3 < 0 || vc.P3 >= particleCount ||
+                    vc.P4 < 0 || vc.P4 >= particleCount)
+                {
+                    Debug.LogError($"CRITICAL ERROR IN VOLUME CONSTRAINT DATA! VolumeConstraint at index {i} has invalid particle indices. P1={vc.P1}, P2={vc.P2}, P3={vc.P3}, P4={vc.P4}. THIS WILL CAUSE A GPU CRASH.");
+                    settings.useCPUFallback = true; // Halt simulation
+                    return;
+                }
+            }
+            
+            Debug.Log("CPU Data Validation PASSED. All constraint indices are within particle bounds.");
         }
 
         #region Designer Methods
@@ -1075,6 +1181,64 @@ namespace SoftBody.Scripts
 
             _particleBuffer.SetData(_particles);
             Debug.Log($"Applied force {force} to {_particles.Count} particles");
+        }
+
+        public void PokeParticle(Vector3 worldPosition, Vector3 impulse)
+        {
+            if (_particles == null || _particles.Count == 0 || _particleBuffer == null)
+            {
+                Debug.LogWarning("Cannot poke, physics system not initialized.");
+                return;
+            }
+
+            // --- 1. Find the Closest Particle ---
+            // We need to get the current particle positions from the GPU.
+            // This is a slow operation, but fine for a debug tool.
+            var currentParticles = new Particle[_particles.Count];
+            _particleBuffer.GetData(currentParticles);
+
+            var closestParticleIndex = -1;
+            var minDistanceSq = float.MaxValue;
+
+            for (var i = 0; i < currentParticles.Length; i++)
+            {
+                var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - worldPosition);
+                if (distSq < minDistanceSq)
+                {
+                    minDistanceSq = distSq;
+                    closestParticleIndex = i;
+                }
+            }
+
+            if (closestParticleIndex != -1)
+            {
+                Debug.Log($"Poking particle {closestParticleIndex} with impulse {impulse}.");
+
+                // --- 2. Apply the Impulse ---
+                // We directly add the impulse to the particle's velocity.
+                // An impulse is a change in momentum (mass * velocity).
+                // So, delta_velocity = impulse / mass, which is impulse * invMass.
+                var p = currentParticles[closestParticleIndex];
+
+                // Ensure we don't poke pinned particles
+                if (p.InvMass > 0)
+                {
+                    var deltaVelocity = impulse * p.InvMass;
+                    p.Velocity.x += deltaVelocity.x;
+                    p.Velocity.y += deltaVelocity.y;
+                    p.Velocity.z += deltaVelocity.z;
+
+                    currentParticles[closestParticleIndex] = p;
+
+                    // --- 3. Upload the Modified Data Back to the GPU ---
+                    // We only upload the single changed particle for efficiency.
+                    _particleBuffer.SetData(currentParticles, closestParticleIndex, closestParticleIndex, 1);
+                }
+                else
+                {
+                    Debug.Log($"Attempted to poke particle {closestParticleIndex}, but it is pinned (invMass = 0).");
+                }
+            }
         }
 
         public void SetPinned(Vector3 position, float radius = 0.5f, bool pinned = true)
@@ -1231,6 +1395,55 @@ namespace SoftBody.Scripts
 
             SetupBuffers();
             Debug.Log("Simple test setup: 2 particles, 1 constraint");
+        }
+        
+        [ContextMenu("Run Two-Particle Drop Test")]
+        public void RunTwoParticleDropTest()
+        {
+            Debug.Log("--- SETTING UP TWO-PARTICLE DROP TEST ---");
+
+            // 1. Create particles and constraints lists
+            _particles = new List<Particle>();
+            _constraints = new List<Constraint>();
+            _volumeConstraints = new List<VolumeConstraint>(); // Ensure this is empty
+            _indices = new List<int>(); // Ensure this is empty
+
+            // 2. Create two particles
+            var p1 = new Particle();
+            p1.Position = new Vector3(0, 2, 0); // Start 2 meters up
+            p1.InvMass = 1.0f;
+            _particles.Add(p1);
+    
+            var p2 = new Particle();
+            p2.Position = new Vector3(0, 1, 0); // 1 meter below the first one
+            p2.InvMass = 1.0f;
+            _particles.Add(p2);
+    
+            Debug.Log($"Created 2 particles. P1 at {p1.Position}, P2 at {p2.Position}");
+
+            // 3. Create one constraint between them
+            var constraint = new Constraint
+            {
+                ParticleA = 0,
+                ParticleB = 1,
+                RestLength = 1.0f, // Their starting distance
+                Compliance = 0.0f, // Make it very stiff for this test
+                Lambda = 0f,
+                ColourGroup = 0
+            };
+            _constraints.Add(constraint);
+            Debug.Log("Created 1 constraint between them.");
+
+            // 4. Re-initialize all GPU buffers with this new, simple data
+            // This will dispose the old buffers and create new ones with the correct sizes.
+            SetupBuffers();
+
+            // 5. Set gravity to a standard value
+            settings.gravity = 9.81f;
+            Debug.Log("Gravity enabled. Test is ready. Press Play.");
+    
+            // Switch to debug mode to see logs
+            settings.debugMode = true;
         }
 
         #endregion

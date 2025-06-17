@@ -7,6 +7,9 @@
 #pragma kernel DebugAndValidateParticles
 #pragma kernel SolveGeneralCollisions
 
+#pragma target 4.5
+#pragma float_precision(high)
+
 #define COLLIDER_TYPE_SPHERE 0
 #define COLLIDER_TYPE_PLANE 1
 
@@ -181,9 +184,17 @@ void SolveConstraints(uint3 id : SV_DispatchThreadID)
     float3 direction = delta / currentLength;
     float constraintError = currentLength - c.restLength;
     
+    float dt2 = deltaTime * deltaTime;
+    if (dt2 < 1e-12)
+    {
+        // If the timestep is effectively zero, don't solve.
+        return;
+    }
+    float alphaTilde = c.compliance / dt2;
+    
     // XPBD constraint solving
     // alphaTilde is calculated HERE using the constraint's compliance
-    float alphaTilde = c.compliance / (deltaTime * deltaTime);
+  //  float alphaTilde = c.compliance / (deltaTime * deltaTime);
     
     // Ensure alphaTilde isn't too small
     alphaTilde = max(alphaTilde, 1e-10);
@@ -198,6 +209,8 @@ void SolveConstraints(uint3 id : SV_DispatchThreadID)
     // XPBD solving equation
     float deltaLambda = (-constraintError - alphaTilde * c.lambda) / 
                        (totalInvMass + alphaTilde + 1e-9);
+
+    if (abs(deltaLambda) < 1e-6) return; // Skip if negligible correction
     
     // Clamp delta lambda to prevent explosions
   //  float maxCorrection = c.restLength * 0.1; // 10% of rest length
