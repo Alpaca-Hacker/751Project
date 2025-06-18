@@ -233,105 +233,61 @@ namespace SoftBody.Scripts
             for (var i = 0; i < _constraints.Count; i++)
             {
                 var c = _constraints[i];
-                c.ColourGroup = i;
+                c.ColourGroup = 0;
                 _constraints[i] = c;
             }
             
-           /*
-                // This is a simple, stateless, and 100% correct coloring for a regular grid.
-                // It requires 8 colors and avoids all race conditions.
-                Debug.Log("Applying 8-way grid coloring.");
-            
-                var res = settings.resolution;
-            
-                for (int i = 0; i < _constraints.Count; i++)
-                {
-                    var c = _constraints[i];
-            
-                    // Get the grid coordinates (x,y,z) of the first particle in the constraint.
-                    int p_idx = c.ParticleA;
-                    int z = p_idx % res;
-                    int y = (p_idx / res) % res;
-                    int x = p_idx / (res * res);
-            
-                    // Determine the color based on the parity (even/odd) of the coordinates.
-                    // This creates a 3D checkerboard pattern.
-                    // (0,0,0) -> color 0
-                    // (1,0,0) -> color 1
-                    // (0,1,0) -> color 2
-                    // (1,1,0) -> color 3
-                    // ...and so on.
-                    int color = (x % 2) + (y % 2) * 2 + (z % 2) * 4;
-                    
-                    c.ColourGroup = color;
-                    _constraints[i] = c;
-                }
-            
-                Debug.Log("Grid coloring complete. Using 8 color groups.");
-           
-    */
             try
             {
-                // Try graph clustering
-                //var clusters = GraphClusterer.CreateClusters(_constraints, _particles.Count);
-                //GraphClusterer.ColourClusters(clusters, _constraints);
+                var clusters = new List<Cluster>();
+                switch (settings.GraphColouringMethod)
+                {
+                    case GraphColouringMethod.Naive:
+                    {
+                        GraphColouring.ApplyNaiveGraphColouring(_constraints);
+                        break;
+                    }
+                    case GraphColouringMethod.Clustering:
+                    {
+                        clusters = GraphColouring.CreateClusters(_constraints, _particles.Count);
+                        GraphColouring.ColourClusters(clusters, _constraints);
+                        break;
+                    }
+                    case GraphColouringMethod.None:
+                    {
+                        for (var i = 0; i < _constraints.Count; i++)
+                        {
+                            var c = _constraints[i];
+                            c.ColourGroup = i;
+                            _constraints[i] = c;
+                        }
+                        break;
+                    }
+                    case GraphColouringMethod.Greedy:
+                    {
+                        var numColors = GraphColouring.ColourConstraints(_constraints, _particles.Count);
+                        Debug.Log($"Successfully applied graph coloring with {numColors} colors");
+                        break;
+                    }
+                    case GraphColouringMethod.SpectralPartitioning:
+                    {
+                        clusters = GraphColouring.CreateClustersWithSpectralPartitioning(_constraints, _particles.Count);
+                        GraphColouring.ColourClusters(clusters, _constraints);
+                        break;
+                    }
+                    default:
+                        Debug.LogError($"Unknown graph colouring method: {settings.GraphColouringMethod}");
+                        break;
+                }
+          
             }
             catch (System.Exception e)
             {
                 Debug.LogWarning($"Graph clustering failed: {e.Message}, using naive colouring");
-                ApplyNaiveGraphColouring();
+              //  ApplyNaiveGraphColouring();
             }
         }
         
-        private void ApplyNaiveGraphColouring()
-        {
-            Debug.Log($"Applying naive graph colouring to {_constraints.Count} constraints...");
-
-            // Simple greedy graph colouring algorithm
-            var colouredConstraints = new List<Constraint>();
-
-            for (var i = 0; i < _constraints.Count; i++)
-            {
-                var constraint = _constraints[i];
-
-                // Find which colours are already used by constraints sharing particles
-                var usedcolours = new HashSet<int>();
-
-                for (var j = 0; j < colouredConstraints.Count; j++)
-                {
-                    var other = colouredConstraints[j];
-
-                    // Check if constraints share particles
-                    if (constraint.ParticleA == other.ParticleA || constraint.ParticleA == other.ParticleB ||
-                        constraint.ParticleB == other.ParticleA || constraint.ParticleB == other.ParticleB)
-                    {
-                        usedcolours.Add(other.ColourGroup);
-                    }
-                }
-
-                // Assign the smallest available colour
-                var colour = 0;
-                while (usedcolours.Contains(colour))
-                {
-                    colour++;
-                }
-
-                constraint.ColourGroup = colour;
-                colouredConstraints.Add(constraint);
-            }
-
-            // Update the constraints list
-            _constraints = colouredConstraints;
-
-            // Count colours used
-            var maxcolour = 0;
-            foreach (var constraint in _constraints)
-            {
-                maxcolour = Mathf.Max(maxcolour, constraint.ColourGroup);
-            }
-
-            Debug.Log($"Graph colouring complete: {maxcolour + 1} colour groups needed");
-        }
 
         private void AddConstraint(int a, int b, float compliance)
         {
@@ -715,12 +671,15 @@ namespace SoftBody.Scripts
             
             
             // Example: Find all GameObjects with a specific tag and add them
-            // foreach (var sphereCollider in FindObjectsOfType<SphereCollider>())
-            // {
-            //     if (_colliders.Count >= 64) break; // Don't exceed buffer capacity
-            //     var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position, sphereCollider.radius * sphereCollider.transform.lossyScale.x);
-            //     _colliders.Add(sphere);
-            // }
+             foreach (var sphereCollider in FindObjectsByType<SphereCollider>(FindObjectsSortMode.None))
+            {
+                if (_colliders.Count >= 64)
+                {
+                    break;
+                } // Don't exceed buffer capacity
+                var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position, sphereCollider.radius * sphereCollider.transform.lossyScale.x);
+                _colliders.Add(sphere);
+            }
 
             // Upload the data to the GPU
             if (_colliders.Count > 0)

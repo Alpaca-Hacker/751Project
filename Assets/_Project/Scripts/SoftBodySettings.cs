@@ -36,6 +36,7 @@ namespace SoftBody.Scripts
         [Header("Debug Options")]
         public bool useCPUFallback = false;
         public bool debugMode;
+        public GraphColouringMethod GraphColouringMethod = GraphColouringMethod.None;
         
 
         public void LogSettings()
