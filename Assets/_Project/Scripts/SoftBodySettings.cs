@@ -27,7 +27,6 @@ namespace SoftBody.Scripts
         
         [Header("Collision")]
         public Transform floorTransform;
-        public float collisionCompliance = 0.0f;
     
         [Header("Interaction")]
         public bool enableCollision = true;

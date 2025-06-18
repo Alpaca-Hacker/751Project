@@ -39,7 +39,6 @@ namespace SoftBody.Scripts
         private int _kernelUpdateVelocities;
         private int _kernelDebugAndValidate;
         private int _kernelSolveGeneralCollisions;
-        private int _kernelSolveGeneralCollisions_XPBD;
         private int _kernelApplyCollisionCorrections;
         
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
@@ -85,11 +84,9 @@ namespace SoftBody.Scripts
             _kernelUpdateMesh = computeShader.FindKernel("UpdateMesh");
             _kernelDecayLambdas = computeShader.FindKernel("DecayLambdas");
             _kernelVolumeConstraints = computeShader.FindKernel("SolveVolumeConstraints");
-            _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
             _kernelUpdateVelocities = computeShader.FindKernel("UpdateVelocities");
             _kernelDebugAndValidate = computeShader.FindKernel("DebugAndValidateParticles");
             _kernelSolveGeneralCollisions = computeShader.FindKernel("SolveGeneralCollisions");
-            _kernelSolveGeneralCollisions_XPBD = computeShader.FindKernel("SolveGeneralCollisions_XPBD");
             _kernelApplyCollisionCorrections = computeShader.FindKernel("ApplyCollisionCorrections");
 
             // Verify all kernels were found
@@ -557,11 +554,7 @@ namespace SoftBody.Scripts
 
                 if (_colliders.Count > 0)
                 {
-                   // computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
-                   // A) Find all collisions and calculate required corrections
-                   computeShader.Dispatch(_kernelSolveGeneralCollisions_XPBD, particleThreadGroups, 1, 1);
-            
-                   // B) Apply the positional corrections (with friction)
+                   computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
                    computeShader.Dispatch(_kernelApplyCollisionCorrections, particleThreadGroups, 1, 1);
                 }
             }
@@ -620,20 +613,16 @@ namespace SoftBody.Scripts
             
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Colliders, _colliderBuffer);
-            
-            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, Constants.Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, Constants.Colliders, _colliderBuffer);
-            computeShader.SetBuffer(_kernelSolveGeneralCollisions_XPBD, "collisionCorrections", _collisionCorrectionsBuffer);
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.CollisionCorrections, _collisionCorrectionsBuffer);
 
             computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelApplyCollisionCorrections, "collisionCorrections", _collisionCorrectionsBuffer);
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.CollisionCorrections, _collisionCorrectionsBuffer);
             computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.PreviousPositions, _previousPositionsBuffer);
         }
         
 
         private void SetComputeShaderParameters(float deltaTime)
         {
-            var floorY = FindFloorLevel();
             computeShader.SetFloat(Constants.DeltaTime, deltaTime);
             computeShader.SetFloat(Constants.Gravity, settings.gravity);
             computeShader.SetFloat(Constants.Damping, settings.damping);
@@ -642,8 +631,6 @@ namespace SoftBody.Scripts
             computeShader.SetInt(Constants.ConstraintCount, _constraints.Count);
             computeShader.SetFloat(Constants.LambdaDecay, settings.lambdaDecay);
             computeShader.SetInt(Constants.VolumeConstraintCount, _volumeConstraints.Count);
-            
-            computeShader.SetFloat(Constants.CollisionCompliance, settings.collisionCompliance);
         }
 
         private void UpdateColliders()
@@ -700,7 +687,6 @@ namespace SoftBody.Scripts
             _volumeConstraints = new List<VolumeConstraint>();
             var res = settings.resolution;
             
-            var particleVolumeCount = new int[_particles.Count];
             var compliance = settings.volumeCompliance;
 
             for (var x = 0; x < res - 1; x++)
@@ -710,14 +696,14 @@ namespace SoftBody.Scripts
                     for (var z = 0; z < res - 1; z++)
                     {
                         // Get the 8 corners of the cube cell
-                        var p000 = (x * res * res) + (y * res) + z;
-                        var p100 = ((x + 1) * res * res) + (y * res) + z;
-                        var p110 = ((x + 1) * res * res) + ((y + 1) * res) + z;
-                        var p010 = (x * res * res) + ((y + 1) * res) + z;
-                        var p001 = (x * res * res) + (y * res) + (z + 1);
-                        var p101 = ((x + 1) * res * res) + (y * res) + (z + 1);
-                        var p111 = ((x + 1) * res * res) + ((y + 1) * res) + (z + 1);
-                        var p011 = (x * res * res) + ((y + 1) * res) + (z + 1);
+                        var p000 = x * res * res + y * res + z;
+                        var p100 = (x + 1) * res * res + y * res + z;
+                        var p110 = (x + 1) * res * res + (y + 1) * res + z;
+                        var p010 = x * res * res + (y + 1) * res + z;
+                        var p001 = x * res * res + y * res + z + 1;
+                        var p101 = (x + 1) * res * res + y * res + z + 1;
+                        var p111 = (x + 1) * res * res + (y + 1) * res + z + 1;
+                        var p011 = x * res * res + (y + 1) * res + z + 1;
 
                         // Decompose the cube into 5 tetrahedra
                         AddTetrahedron(p000, p100, p110, p001, compliance);
@@ -896,17 +882,6 @@ namespace SoftBody.Scripts
         }
 
         */
-        private float FindFloorLevel()
-        {
-            // Raycast downward to find the floor
-            if (Physics.Raycast(transform.position, Vector3.down, out var hit, 100f, settings.collisionLayers))
-            {
-                return hit.point.y;
-            }
-
-            // Default floor level if no collider found
-            return -5f;
-        }
 
         private void UpdateMeshFromGPU()
         {
@@ -1149,10 +1124,7 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Cannot poke, physics system not initialized.");
                 return;
             }
-
-            // --- 1. Find the Closest Particle ---
-            // We need to get the current particle positions from the GPU.
-            // This is a slow operation, but fine for a debug tool.
+            
             var currentParticles = new Particle[_particles.Count];
             _particleBuffer.GetData(currentParticles);
 
@@ -1172,14 +1144,9 @@ namespace SoftBody.Scripts
             if (closestParticleIndex != -1)
             {
                 Debug.Log($"Poking particle {closestParticleIndex} with impulse {impulse}.");
-
-                // --- 2. Apply the Impulse ---
-                // We directly add the impulse to the particle's velocity.
-                // An impulse is a change in momentum (mass * velocity).
-                // So, delta_velocity = impulse / mass, which is impulse * invMass.
+                
                 var p = currentParticles[closestParticleIndex];
-
-                // Ensure we don't poke pinned particles
+                
                 if (p.InvMass > 0)
                 {
                     var deltaVelocity = impulse * p.InvMass;
@@ -1188,9 +1155,7 @@ namespace SoftBody.Scripts
                     p.Velocity.z += deltaVelocity.z;
 
                     currentParticles[closestParticleIndex] = p;
-
-                    // --- 3. Upload the Modified Data Back to the GPU ---
-                    // We only upload the single changed particle for efficiency.
+                    
                     _particleBuffer.SetData(currentParticles, closestParticleIndex, closestParticleIndex, 1);
                 }
                 else
@@ -1215,194 +1180,6 @@ namespace SoftBody.Scripts
             }
 
             _particleBuffer.SetData(_particles);
-        }
-
-        // Test method - call this to verify the system is working
-        [ContextMenu("Test Physics System")]
-        public void TestPhysicsSystem()
-        {
-            Debug.Log("=== Physics System Test ===");
-            Debug.Log($"Compute Shader: {(computeShader != null ? "Assigned" : "NULL")}");
-            Debug.Log($"Particle Buffer: {(_particleBuffer != null ? "Valid" : "NULL")}");
-            Debug.Log($"Particles Count: {_particles?.Count ?? 0}");
-            Debug.Log($"Constraints Count: {_constraints?.Count ?? 0}");
-            Debug.Log($"CPU Fallback Mode: {settings.useCPUFallback}");
-
-            if (_particles != null && _particles.Count > 0)
-            {
-                // Manually modify first particle to test - make it very obvious
-                var testParticle = _particles[0];
-                var originalPos = testParticle.Position;
-                testParticle.Position += Vector3.up * 2.0f; // Move up 2 units
-                testParticle.Velocity = Vector3.zero; // Reset velocity
-                _particles[0] = testParticle;
-
-                // Update buffer if using GPU
-                if (!settings.useCPUFallback && _particleBuffer != null)
-                {
-                    _particleBuffer.SetData(_particles);
-                }
-
-                Debug.Log($"Moved particle 0 from {originalPos} to {testParticle.Position}");
-                Debug.Log("Watch for mesh movement - it should fall from the new position!");
-            }
-
-            // Force a big downward force on all particles
-            AddForce(Vector3.up * 50f, transform.position, 10f);
-
-            // Test mesh update manually in CPU mode
-            if (settings.useCPUFallback)
-            {
-                Debug.Log("CPU mode - manually updating mesh...");
-                // UpdateCPU();
-            }
-        }
-        
-        [ContextMenu("Test Single Thread Solving")]
-        public void TestSingleThreadSolving()
-        {
-            // Temporarily disable graph colouring
-            for (var i = 0; i < _constraints.Count; i++)
-            {
-                var c = _constraints[i];
-                c.ColourGroup = i; // Each constraint gets unique colour
-                _constraints[i] = c;
-            }
-            _constraintBuffer.SetData(_constraints);
-    
-            Debug.Log($"Testing with {_constraints.Count} sequential colour groups");
-           
-        }
-        
-        [ContextMenu("Validate Constraint Data")]
-        public void ValidateConstraintData()
-        {
-            var constraintData = new Constraint[_constraints.Count];
-            _constraintBuffer.GetData(constraintData);
-    
-            var validConstraints = 0;
-            for (var i = 0; i < constraintData.Length; i++)
-            {
-                var c = constraintData[i];
-                if (c.ParticleA >= 0 && c.ParticleA < _particles.Count &&
-                    c.ParticleB >= 0 && c.ParticleB < _particles.Count &&
-                    c.RestLength > 0)
-                {
-                    validConstraints++;
-                }
-        
-                if (i < 5) // Log first 5 constraints
-                {
-                    Debug.Log($"Constraint {i}: A={c.ParticleA}, B={c.ParticleB}, " +
-                              $"RestLength={c.RestLength}, Compliance={c.Compliance}, " +
-                              $"Lambda={c.Lambda}, colourGroup={c.ColourGroup}");
-                }
-            }
-    
-            Debug.Log($"Valid constraints: {validConstraints}/{_constraints.Count}");
-        }
-
-        [ContextMenu("Reset Lambdas")]
-        private void ResetLambdas()
-        {
-            var constraintData = new Constraint[_constraints.Count];
-            _constraintBuffer.GetData(constraintData);
-
-            for (var i = 0; i < constraintData.Length; i++)
-            {
-                constraintData[i].Lambda = 0f;
-            }
-
-            _constraintBuffer.SetData(constraintData);
-        }
-
-        [ContextMenu("Simple Two Particle Test")]
-        public void SimpleTwoParticleTest()
-        {
-            // Create just 2 particles
-            _particles = new List<Particle>();
-            _constraints = new List<Constraint>();
-
-            // Particle 0 at origin (fixed)
-            _particles.Add(new Particle
-            {
-                Position = Vector3.zero,
-                Velocity = Vector3.zero,
-                Force = Vector3.zero,
-                InvMass = 0f // Fixed
-            });
-
-            // Particle 1 stretched away
-            _particles.Add(new Particle
-            {
-                Position = new Vector3(2f, 0, 0), // Stretched
-                Velocity = Vector3.zero,
-                Force = Vector3.zero,
-                InvMass = 1f
-            });
-
-            // One constraint with rest length 1
-            _constraints.Add(new Constraint
-            {
-                ParticleA = 0,
-                ParticleB = 1,
-                RestLength = 1f,
-                Compliance = 0.0f, // Perfectly stiff
-                Lambda = 0f,
-                ColourGroup = 0
-            });
-
-            SetupBuffers();
-            Debug.Log("Simple test setup: 2 particles, 1 constraint");
-        }
-        
-        [ContextMenu("Run Two-Particle Drop Test")]
-        public void RunTwoParticleDropTest()
-        {
-            Debug.Log("--- SETTING UP TWO-PARTICLE DROP TEST ---");
-
-            // 1. Create particles and constraints lists
-            _particles = new List<Particle>();
-            _constraints = new List<Constraint>();
-            _volumeConstraints = new List<VolumeConstraint>(); // Ensure this is empty
-            _indices = new List<int>(); // Ensure this is empty
-
-            // 2. Create two particles
-            var p1 = new Particle();
-            p1.Position = new Vector3(0, 2, 0); // Start 2 meters up
-            p1.InvMass = 1.0f;
-            _particles.Add(p1);
-    
-            var p2 = new Particle();
-            p2.Position = new Vector3(0, 1, 0); // 1 meter below the first one
-            p2.InvMass = 1.0f;
-            _particles.Add(p2);
-    
-            Debug.Log($"Created 2 particles. P1 at {p1.Position}, P2 at {p2.Position}");
-
-            // 3. Create one constraint between them
-            var constraint = new Constraint
-            {
-                ParticleA = 0,
-                ParticleB = 1,
-                RestLength = 1.0f, // Their starting distance
-                Compliance = 0.0f, // Make it very stiff for this test
-                Lambda = 0f,
-                ColourGroup = 0
-            };
-            _constraints.Add(constraint);
-            Debug.Log("Created 1 constraint between them.");
-
-            // 4. Re-initialize all GPU buffers with this new, simple data
-            // This will dispose the old buffers and create new ones with the correct sizes.
-            SetupBuffers();
-
-            // 5. Set gravity to a standard value
-            settings.gravity = 9.81f;
-            Debug.Log("Gravity enabled. Test is ready. Press Play.");
-    
-            // Switch to debug mode to see logs
-            settings.debugMode = true;
         }
 
         #endregion

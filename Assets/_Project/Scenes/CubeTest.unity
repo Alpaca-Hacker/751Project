@@ -439,7 +439,7 @@ Transform:
   m_GameObject: {fileID: 75349623}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.237, y: 0.426, z: 0.1}
+  m_LocalPosition: {x: -0.237, y: 0.426, z: 0.169}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -4195,6 +4195,7 @@ GameObject:
   - component: {fileID: 1094367042}
   - component: {fileID: 1094367041}
   - component: {fileID: 1094367040}
+  - component: {fileID: 1094367044}
   m_Layer: 0
   m_Name: TestCube
   m_TagString: Untagged
@@ -4227,7 +4228,6 @@ MonoBehaviour:
     bendCompliance: 0.001
     volumeCompliance: 0.00001
     floorTransform: {fileID: 192215456}
-    collisionCompliance: 0.00001
     enableCollision: 1
     collisionLayers:
       serializedVersion: 2
@@ -4305,6 +4305,26 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1094367044
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1094367039}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7bd665f1f094a1cbfa337fd91c8edff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  showParticles: 1
+  showConstraints: 1
+  showForces: 1
+  particleSize: 0.1
+  particleColor: {r: 1, g: 0, b: 0, a: 1}
+  constraintColor: {r: 0, g: 1, b: 0, a: 1}
+  forceColor: {r: 0, g: 0, b: 1, a: 1}
+  showPerformanceStats: 1
 --- !u!1 &1137114286
 GameObject:
   m_ObjectHideFlags: 0

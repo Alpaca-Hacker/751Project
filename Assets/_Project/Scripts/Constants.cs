@@ -7,7 +7,6 @@ namespace SoftBody.Scripts
         public static readonly int DeltaTime = Shader.PropertyToID("deltaTime");
         public static readonly int Gravity = Shader.PropertyToID("gravity");
         public static readonly int Damping = Shader.PropertyToID("damping");
-        public static readonly int FloorY = Shader.PropertyToID("floorY");
         public static readonly int WorldPosition = Shader.PropertyToID("worldPosition");
         public static readonly int ParticleCount = Shader.PropertyToID("particleCount");
         public static readonly int ConstraintCount = Shader.PropertyToID("constraintCount");
@@ -23,5 +22,6 @@ namespace SoftBody.Scripts
         public static readonly int PreviousPositions = Shader.PropertyToID("previousPositions");
         public static readonly int Colliders = Shader.PropertyToID("colliders");
         public static readonly int ColliderCount = Shader.PropertyToID("colliderCount");
+        public static readonly int CollisionCorrections = Shader.PropertyToID("collisionCorrections");
     }
 }

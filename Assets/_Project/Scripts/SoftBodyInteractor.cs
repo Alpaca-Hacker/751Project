@@ -18,7 +18,7 @@ namespace SoftBody.Scripts
             if (targetSoftBody == null)
             {
                 // Try to find it automatically if not assigned
-                targetSoftBody = FindObjectOfType<SoftBody.Scripts.SoftBodyPhysics>();
+                targetSoftBody = FindFirstObjectByType<SoftBodyPhysics>();
             }
         }
 

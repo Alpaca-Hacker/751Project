@@ -54,6 +54,7 @@ RWStructuredBuffer<float4> debugBuffer;
 RWStructuredBuffer<VolumeConstraint> volumeConstraints;
 RWStructuredBuffer<float3> previousPositions;
 StructuredBuffer<SDFCollider> colliders;
+RWStructuredBuffer<float3> collisionCorrections;
 
 // Parameters
 float deltaTime;
@@ -427,83 +428,6 @@ void UpdateVelocities(uint3 id : SV_DispatchThreadID)
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
-{
-    uint p_idx = id.x;
-    if (p_idx >= (uint)particleCount) return;
-    
-    Particle p = particles[p_idx];
-    if (p.positionAndInvMass.w <= 0.0) return;
-
-    // Iterate through all colliders for this one particle
-    for (int c_idx = 0; c_idx < colliderCount; c_idx++)
-    {
-        SDFCollider c = colliders[c_idx];
-        
-        float3 pos = p.positionAndInvMass.xyz;
-        float penetration = 0;
-        float3 normal = float3(0,1,0); // Default normal
-
-        // --- 1. Calculate SDF distance and normal based on collider type ---
-        if (c.type == COLLIDER_TYPE_SPHERE)
-        {
-            float3 center = c.data1.xyz;
-            float radius = c.data1.w;
-            penetration = sdf_sphere(pos, center, radius);
-            if (penetration < 0)
-            {
-                normal = SafeNormalize(pos - center);
-            }
-        }
-        else if (c.type == COLLIDER_TYPE_PLANE)
-        {
-            float3 plane_normal = c.data1.xyz;
-            float plane_dist = c.data1.w;
-            penetration = sdf_plane(pos, plane_normal, plane_dist);
-            if (penetration < 0)
-            {
-                normal = plane_normal;
-            }
-        }
-
-        // --- 2. If penetrating, solve the XPBD constraint ---
-        if (penetration < 0)
-        {
-            p.positionAndInvMass.xyz -= penetration * normal; // Hard projection for simplicity and stability
-            
-            float3 vel = p.velocity.xyz;
-            float vel_normal_comp = dot(vel, normal);
-
-            // Only act if velocity is moving into the collider
-            if (vel_normal_comp < 0)
-            {
-                float3 vel_tangent_comp = vel - vel_normal_comp * normal;
-
-                // Apply friction
-                float friction_coeff = 0.5;
-                float friction_impulse = length(vel_tangent_comp) * friction_coeff;
-                vel_tangent_comp = max(0, length(vel_tangent_comp) - friction_impulse) * SafeNormalize(vel_tangent_comp);
-
-                // Apply restitution (bounciness)
-                float restitution_coeff = 0.2;
-                vel_normal_comp *= -restitution_coeff;
-
-                // Combine back into new velocity
-                p.velocity.xyz = vel_tangent_comp + vel_normal_comp * normal;
-            }
-        }
-    }
-
-    // Write the final corrected position back
-    particles[p_idx] = p;
-}
-
-#pragma kernel SolveGeneralCollisions_XPBD
-
-// A new buffer to store the corrections
-RWStructuredBuffer<float3> collisionCorrections;
-
-[numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void SolveGeneralCollisions_XPBD(uint3 id : SV_DispatchThreadID)
 {
     uint p_idx = id.x;
     if (p_idx >= (uint)particleCount) return;
