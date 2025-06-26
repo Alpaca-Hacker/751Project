@@ -2957,7 +2957,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &675793119
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3882,7 +3882,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81eb1c8f4d6848f8ba807ed69534bc00, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetSoftBody: {fileID: 675793120}
+  targetSoftBody: {fileID: 1347859662}
   pokeStrength: 100
   pokeRadius: 0.5
   continuousForceStrength: 5
@@ -4949,7 +4949,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &1347859661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4983,7 +4983,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   settings:
-    inputMesh: {fileID: -126709643765493106, guid: 5c25ae2305714884ab056287c917ee89, type: 3}
+    inputMesh: {fileID: -2012753172922253885, guid: 44d300b96eccebf408ef54366b074645, type: 3}
     useProceduralCube: 0
     useTetrahedralizationForHighPoly: 1
     maxSurfaceVerticesBeforeTetra: 100

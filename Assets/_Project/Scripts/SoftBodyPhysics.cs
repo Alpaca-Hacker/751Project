@@ -45,6 +45,7 @@ namespace SoftBody.Scripts
 
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
+        private List<Particle> _initialParticles;
 
         private void Start()
         {
@@ -208,7 +209,10 @@ namespace SoftBody.Scripts
             _constraintBuffer.SetData(_constraints);
             _indexBuffer.SetData(_indices);
             _volumeConstraintBuffer.SetData(_volumeConstraints);
-
+            
+            // Store initial particle positions for reset functionality
+            _initialParticles = new List<Particle>(_particles);
+            
             // Create mesh
             _mesh = new Mesh();
             _mesh.name = settings.inputMesh != null ? $"SoftBody_{settings.inputMesh.name}" : "SoftBody_Procedural";
@@ -755,45 +759,66 @@ namespace SoftBody.Scripts
         #region Designer Methods
 
         // Public methods for designer interaction
-        public void AddForce(Vector3 force, Vector3 position, float radius = 1f)
+        public void ResetToInitialState()
         {
-            // Add external force to particles within radius
-            for (var i = 0; i < _particles.Count; i++)
+            if (_initialParticles == null || _particleBuffer == null)
             {
-                var distance = Vector3.Distance(_particles[i].Position, position);
-                if (distance < radius)
-                {
-                    var falloff = 1f - (distance / radius);
-                    var p = _particles[i];
-                    var forceToApply = force * falloff;
-                    p.Force.x = forceToApply.x;
-                    p.Force.y = forceToApply.y;
-                    p.Force.z = forceToApply.z;
-
-                    _particles[i] = p;
-                }
+                Debug.LogWarning("Cannot reset - initial state not stored or buffers not initialized");
+                return;
             }
-
+    
+            // Reset particles to initial positions and clear velocities
+            var resetParticles = new List<Particle>();
+            for (int i = 0; i < _initialParticles.Count; i++)
+            {
+                var p = _initialParticles[i];
+                p.Velocity = Vector4.zero;  // Clear velocity
+                p.Force = Vector4.zero;     // Clear forces
+                resetParticles.Add(p);
+            }
+    
+            // Update the lists and buffers
+            _particles = resetParticles;
             _particleBuffer.SetData(_particles);
-            Debug.Log($"Applied force {force} to {_particles.Count} particles");
+    
+            // Reset constraint lambdas
+            for (int i = 0; i < _constraints.Count; i++)
+            {
+                var c = _constraints[i];
+                c.Lambda = 0f;
+                _constraints[i] = c;
+            }
+            _constraintBuffer.SetData(_constraints);
+    
+            // Reset volume constraint lambdas
+            for (int i = 0; i < _volumeConstraints.Count; i++)
+            {
+                var vc = _volumeConstraints[i];
+                vc.Lambda = 0f;
+                _volumeConstraints[i] = vc;
+            }
+            _volumeConstraintBuffer.SetData(_volumeConstraints);
+    
+            Debug.Log("Soft body reset to initial state");
         }
         
-
-        public void SetPinned(Vector3 position, float radius = 0.5f, bool pinned = true)
+        public void ResetVelocities()
         {
-            // Pin/unpin particles within radius
-            for (var i = 0; i < _particles.Count; i++)
+            if (_particleBuffer == null) return;
+    
+            var currentParticles = new Particle[_particles.Count];
+            _particleBuffer.GetData(currentParticles);
+    
+            for (int i = 0; i < currentParticles.Length; i++)
             {
-                var distance = Vector3.Distance(_particles[i].Position, position);
-                if (distance < radius)
-                {
-                    var p = _particles[i];
-                    p.InvMass = pinned ? 0f : 1f / settings.mass;
-                    _particles[i] = p;
-                }
+                var p = currentParticles[i];
+                p.Velocity = Vector4.zero;
+                p.Force = Vector4.zero;
+                currentParticles[i] = p;
             }
-
-            _particleBuffer.SetData(_particles);
+    
+            _particleBuffer.SetData(currentParticles);
+            Debug.Log("Velocities reset");
         }
         
         public void PokeAtPosition(Vector3 worldPosition, Vector3 impulse, float radius = 1f)

@@ -91,14 +91,13 @@ namespace SoftBody.Scripts
 
         private void HandleMouseDown(Ray ray)
         {
-            if (enablePoke)
+            if (Input.GetKey(KeyCode.LeftShift) && enableGrab)
+            {
+                StartGrab(ray); 
+            }
+            else if (enablePoke)
             {
                 PerformPoke(ray);
-            }
-
-            if (enableGrab)
-            {
-                StartGrab(ray);
             }
         }
 
@@ -154,8 +153,15 @@ namespace SoftBody.Scripts
             // R key to reset
             if (Input.GetKeyDown(KeyCode.R))
             {
-                // You can add a reset method to SoftBodyPhysics if needed
-                Debug.Log("Reset requested");
+                targetSoftBody.ResetToInitialState();
+                Debug.Log("Reset soft body to initial state");
+            }
+    
+            // T key for quick velocity reset
+            if (Input.GetKeyDown(KeyCode.T))
+            {
+                targetSoftBody.ResetVelocities();
+                Debug.Log("Reset velocities only");
             }
 
             // Space to apply upward force
@@ -214,27 +220,27 @@ namespace SoftBody.Scripts
         private void ShowInteractionPreview(Ray ray)
         {
             if (!showVisualFeedback) return;
-
+    
             if (Physics.Raycast(ray, out RaycastHit hit, 100f))
             {
                 if (hit.collider.gameObject == targetSoftBody.gameObject)
                 {
-                    // Show and position indicator
                     _currentIndicator.SetActive(true);
                     _currentIndicator.transform.position = hit.point;
                     _currentIndicator.transform.localScale = Vector3.one * (pokeRadius * 2f);
-
-                    // Change color based on interaction state
+            
                     var renderer = _currentIndicator.GetComponent<Renderer>();
                     if (renderer != null)
                     {
-                        renderer.material.color = _isGrabbing
-                            ? new Color(0, 1, 0, 0.5f)
-                            : // Green when grabbing
-                            new Color(1, 1, 0, 0.5f); // Yellow normally
+                        // Different colors for different modes
+                        if (_isGrabbing)
+                            renderer.material.color = new Color(0, 1, 0, 0.7f); // Green when grabbing
+                        else if (Input.GetKey(KeyCode.LeftShift))
+                            renderer.material.color = new Color(0, 0, 1, 0.5f); // Blue for grab mode
+                        else
+                            renderer.material.color = new Color(1, 1, 0, 0.5f); // Yellow for poke mode
                     }
-
-                    // Show ray
+            
                     _pokeRay.enabled = true;
                     _pokeRay.SetPosition(0, ray.origin);
                     _pokeRay.SetPosition(1, hit.point);
@@ -361,47 +367,59 @@ namespace SoftBody.Scripts
         {
             if (!_isGrabbing || _grabbedParticleIndices.Count == 0) return;
 
-            // Calculate where the grab point should be now
-            var targetGrabPosition = ray.GetPoint(_grabDistance);
-            var grabMovement = targetGrabPosition - _grabWorldPosition;
+            // Get the plane at the grab distance perpendicular to camera forward
+            var cameraForward = _mainCamera.transform.forward;
+            var grabPlaneCenter = _mainCamera.transform.position + cameraForward * _grabDistance;
+            var plane = new Plane(-cameraForward, grabPlaneCenter);
+    
+            // Project the ray onto this plane to get the target position
+            if (plane.Raycast(ray, out float enter))
+            {
+                var targetGrabPosition = ray.GetPoint(enter);
+                var grabMovement = targetGrabPosition - _grabWorldPosition;
+        
+                // Apply movement to grabbed particles
+                ApplyGrabMovement(grabMovement);
+        
+                // Update grab position for next frame
+                _grabWorldPosition = targetGrabPosition;
+            }
+        }
 
-            // Apply strong forces to move grabbed particles
+        private void ApplyGrabMovement(Vector3 movement)
+        {
             var currentParticles = new Particle[targetSoftBody.ParticleCount];
             targetSoftBody.GetParticleData(currentParticles);
-
-            var springStrength = 200f; // Very strong spring force
-            var damping = 0.9f;
-
+    
+            var springStrength = 300f; // Increased strength
+            var damping = 0.8f;
+    
             foreach (var particleIndex in _grabbedParticleIndices)
             {
                 var p = currentParticles[particleIndex];
-
-                // Calculate target position for this particle
-                var targetPosition = p.Position + grabMovement;
+        
+                // Direct position-based manipulation
+                var targetPosition = p.Position + movement;
                 var displacement = targetPosition - p.Position;
-
-                // Apply spring force
+        
+                // Strong spring force toward target
                 var springForce = displacement * springStrength;
-
-                // Apply damping to prevent oscillation
+        
+                // Apply damping
                 p.Velocity.x *= damping;
                 p.Velocity.y *= damping;
                 p.Velocity.z *= damping;
-
-                // Add spring force as velocity change
+        
+                // Add spring force
                 var deltaV = springForce * p.InvMass * Time.deltaTime;
                 p.Velocity.x += deltaV.x;
                 p.Velocity.y += deltaV.y;
                 p.Velocity.z += deltaV.z;
-
+        
                 currentParticles[particleIndex] = p;
             }
-
-            // Update the buffer
+    
             targetSoftBody.SetParticleData(currentParticles);
-
-            // Update grab world position for next frame
-            _grabWorldPosition = targetGrabPosition;
         }
 
         private void EndGrab()
@@ -414,14 +432,17 @@ namespace SoftBody.Scripts
 
         private void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(10, Screen.height - 150, 300, 140));
-            GUILayout.Label("Soft Body Interaction Controls:",
-                new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+            GUILayout.BeginArea(new Rect(10, Screen.height - 200, 300, 190));
+            GUILayout.Label("Soft Body Interaction Controls:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
             GUILayout.Label("Left Click: Poke");
-            GUILayout.Label("Hold Left Click: Continuous force");
-            GUILayout.Label("Drag: Grab and pull");
+            GUILayout.Label("Shift + Left Click: Grab");
+            GUILayout.Label("Hold + Drag: Pull");
             GUILayout.Label("Space + Mouse: Apply upward force");
-            GUILayout.Label("R: Reset (if implemented)");
+            GUILayout.Label("R: Reset");
+            GUILayout.Label("T: Reset velocities only");
+            GUILayout.Label($"Grabbing: {_isGrabbing}");
+            if (_isGrabbing && _grabbedParticleIndices != null)
+                GUILayout.Label($"Grabbed Particles: {_grabbedParticleIndices.Count}");
             GUILayout.EndArea();
         }
     }
