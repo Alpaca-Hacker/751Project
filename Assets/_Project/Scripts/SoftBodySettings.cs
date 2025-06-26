@@ -5,10 +5,26 @@ namespace SoftBody.Scripts
     [System.Serializable]
     public class SoftBodySettings
     {
-        [Header("Mesh Generation")]
+        [Header("Mesh Input")]
+        public Mesh inputMesh;
+        public bool useProceduralCube = true; 
+        [Header("High Poly Tetrahedralization")]
+        public bool useTetrahedralizationForHighPoly = true;
+        public int maxSurfaceVerticesBeforeTetra = 500;
+        public float interiorPointDensity = 0.3f; 
+        [Header("Cube Settings")]
         public Vector3 size = Vector3.one;
         [Range(2, 20)]
         public int resolution = 4;
+        
+        [Header("Mesh Processing")]
+        public bool preserveUVs = true;
+        public bool preserveNormals = false;
+        [Range(0.5f, 2f)]
+        public float constraintDensityMultiplier = 1f;
+        [Header("Mesh Connectivity")]
+        public bool autoFixConnectivity = true;
+        public ConnectivityMethod connectivityMethod = ConnectivityMethod.BridgeConstraints;
     
         [Header("Physics")]
      
@@ -50,6 +66,13 @@ namespace SoftBody.Scripts
                       $"StructuralCompliance={structuralCompliance}," +
                       $"ShearCompliance={shearCompliance}," +
                       $"BendCompliance={bendCompliance}");
+        }
+        
+        public enum ConnectivityMethod
+        {
+            BridgeConstraints,    // Minimal, targeted fixes
+            ProximityBased,       // Robust but more constraints  
+            Hybrid               // Try bridge first, then proximity
         }
     }
 }

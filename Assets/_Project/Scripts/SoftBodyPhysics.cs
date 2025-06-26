@@ -30,6 +30,7 @@ namespace SoftBody.Scripts
         private List<VolumeConstraint> _volumeConstraints;
         private List<int> _indices;
         private List<SDFCollider> _colliders = new ();
+        private Vector2[] _weldedUVs;
 
         private int _kernelIntegrateAndStore;
         private int _kernelSolveConstraints;
@@ -50,12 +51,15 @@ namespace SoftBody.Scripts
             {
                 Debug.Log("SoftBodySimulator: Starting initialization...");
                 InitializeComputeShader();
-                SoftBodyGenerator.GenerateCube(settings, transform, out _particles, out _constraints, out _volumeConstraints, out _indices);
+                
+                SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints, out _volumeConstraints, out _indices, out _weldedUVs);
+                
                 ApplyGraphColouring();
                 SetupBuffers();
                 SetupRenderMaterial();
                 
                 Debug.Log($"Initialization complete. Particles: {_particles?.Count}, Constraints: {_constraints?.Count}");
+                
                 settings.LogSettings();
                 
                 if (_particles != null && _particles.Count > 0)
@@ -158,30 +162,40 @@ namespace SoftBody.Scripts
             }
             catch (System.Exception e)
             {
-                Debug.LogWarning($"Graph clustering failed: {e.Message}, using naive colouring");
-              //  ApplyNaiveGraphColouring();
+                Debug.LogError($"Graph clustering failed: {e.Message}");
             }
         }
 
         private void SetupBuffers()
         {
+            
+            if (_particles == null || _particles.Count == 0)
+            {
+                Debug.LogError("No particles generated! Check mesh input.");
+                settings.useCPUFallback = true;
+                return;
+            }
+    
+            if (_constraints == null || _constraints.Count == 0)
+            {
+                Debug.LogError("No constraints generated! Check mesh topology.");
+                settings.useCPUFallback = true;
+                return;
+            }
+            
             // Create compute buffers
             _particleBuffer = new ComputeBuffer(_particles.Count, SizeOf<Particle>());
             _constraintBuffer = new ComputeBuffer(_constraints.Count, SizeOf<Constraint>());
             _vertexBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _indexBuffer = new ComputeBuffer(_indices.Count, sizeof(int));
             _debugBuffer = new ComputeBuffer(1, sizeof(float) * 4);
-            _volumeConstraintBuffer = new ComputeBuffer(_volumeConstraints.Count, SizeOf<VolumeConstraint>());
+            _volumeConstraintBuffer = new ComputeBuffer(Mathf.Max(1, _volumeConstraints.Count), SizeOf<VolumeConstraint>());
             _previousPositionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _colliderBuffer = new ComputeBuffer(64, SizeOf<SDFCollider>());
             _collisionCorrectionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
 
             ValidateAllData();
-            if (settings.useCPUFallback)
-            {
-                Debug.LogWarning("Using CPU fallback mode! Performance may be significantly reduced.");
-                return;
-            }
+
             // Upload initial data
             _particleBuffer.SetData(_particles);
             _constraintBuffer.SetData(_constraints);
@@ -190,8 +204,9 @@ namespace SoftBody.Scripts
 
             // Create mesh
             _mesh = new Mesh();
-            _mesh.name = "SoftBody";
-
+            _mesh.name = settings.inputMesh != null ? 
+                $"SoftBody_{settings.inputMesh.name}" : "SoftBody_Procedural";
+    
             var vertices = new Vector3[_particles.Count];
             for (var i = 0; i < _particles.Count; i++)
             {
@@ -200,6 +215,18 @@ namespace SoftBody.Scripts
 
             _mesh.vertices = vertices;
             _mesh.triangles = _indices.ToArray();
+    
+            // Apply welded UVs if available
+            if (_weldedUVs != null && _weldedUVs.Length == _particles.Count)
+            {
+                _mesh.uv = _weldedUVs;
+                Debug.Log("Applied remapped UVs after welding");
+            }
+            else if (_weldedUVs != null)
+            {
+                Debug.LogWarning($"UV count mismatch: {_weldedUVs.Length} UVs vs {_particles.Count} particles");
+            }
+    
             _mesh.RecalculateNormals();
             _mesh.RecalculateBounds();
 
@@ -252,15 +279,13 @@ namespace SoftBody.Scripts
                 _mesh.RecalculateNormals();
                 _mesh.RecalculateTangents(); // Important for normal mapping in URP
             }
-
-            // Optional: Add a MeshCollider for more accurate lighting interactions
-            var meshCollider = GetComponent<MeshCollider>();
-            if (meshCollider == null && settings.enableCollision)
-            {
-                meshCollider = gameObject.AddComponent<MeshCollider>();
-                meshCollider.convex = true; // Required for soft body physics
-                meshCollider.sharedMesh = _mesh;
-            }
+            
+            // if (settings.enableCollision && GetComponent<Collider>() == null)
+            // {
+            //     // Use a simple collider approximation instead
+            //     var sphereCollider = gameObject.AddComponent<SphereCollider>();
+            //     sphereCollider.isTrigger = true; // For interaction detection only
+            // }
         }
 
         private void Update()
