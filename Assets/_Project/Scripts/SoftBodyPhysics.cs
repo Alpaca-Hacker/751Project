@@ -9,11 +9,12 @@ namespace SoftBody.Scripts
 {
     public class SoftBodyPhysics : MonoBehaviour
     {
-        [SerializeField] private SoftBodySettings settings = new ();
+        [SerializeField] private SoftBodySettings settings = new();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
-        
-        
+
+        public int ParticleCount => _particles?.Count ?? 0;
+
         private ComputeBuffer _particleBuffer;
         private ComputeBuffer _constraintBuffer;
         private ComputeBuffer _vertexBuffer;
@@ -29,7 +30,7 @@ namespace SoftBody.Scripts
         private List<Constraint> _constraints;
         private List<VolumeConstraint> _volumeConstraints;
         private List<int> _indices;
-        private List<SDFCollider> _colliders = new ();
+        private List<SDFCollider> _colliders = new();
         private Vector2[] _weldedUVs;
 
         private int _kernelIntegrateAndStore;
@@ -41,7 +42,7 @@ namespace SoftBody.Scripts
         private int _kernelDebugAndValidate;
         private int _kernelSolveGeneralCollisions;
         private int _kernelApplyCollisionCorrections;
-        
+
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
 
@@ -51,17 +52,19 @@ namespace SoftBody.Scripts
             {
                 Debug.Log("SoftBodySimulator: Starting initialization...");
                 InitializeComputeShader();
-                
-                SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints, out _volumeConstraints, out _indices, out _weldedUVs);
-                
+
+                SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints,
+                    out _volumeConstraints, out _indices, out _weldedUVs);
+
                 ApplyGraphColouring();
                 SetupBuffers();
                 SetupRenderMaterial();
-                
-                Debug.Log($"Initialization complete. Particles: {_particles?.Count}, Constraints: {_constraints?.Count}");
-                
+
+                Debug.Log(
+                    $"Initialization complete. Particles: {_particles?.Count}, Constraints: {_constraints?.Count}");
+
                 settings.LogSettings();
-                
+
                 if (_particles != null && _particles.Count > 0)
                 {
                     var testParticle = _particles[0];
@@ -81,7 +84,7 @@ namespace SoftBody.Scripts
             {
                 Debug.LogError("Compute Shader not assigned! Please assign the XPBDSoftBody compute shader.");
                 return;
-                
+
             }
 
             _kernelIntegrateAndStore = computeShader.FindKernel("IntegrateAndStorePositions");
@@ -95,7 +98,8 @@ namespace SoftBody.Scripts
             _kernelApplyCollisionCorrections = computeShader.FindKernel("ApplyCollisionCorrections");
 
             // Verify all kernels were found
-            if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 || _kernelDecayLambdas == -1)
+            if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 ||
+                _kernelDecayLambdas == -1)
             {
                 Debug.LogError(
                     "Could not find required compute shader kernels! Make sure the compute shader has IntegrateParticles, SolveConstraints, and UpdateMesh kernels.");
@@ -105,7 +109,7 @@ namespace SoftBody.Scripts
                 Debug.Log("Compute shader kernels found successfully.");
             }
         }
-        
+
         private void ApplyGraphColouring()
         {
             // Initialize all constraints with colour group 0 as fallback
@@ -115,7 +119,7 @@ namespace SoftBody.Scripts
                 c.ColourGroup = 0;
                 _constraints[i] = c;
             }
-            
+
             try
             {
                 var clusters = new List<Cluster>();
@@ -140,6 +144,7 @@ namespace SoftBody.Scripts
                             c.ColourGroup = i;
                             _constraints[i] = c;
                         }
+
                         break;
                     }
                     case GraphColouringMethod.Greedy:
@@ -150,7 +155,8 @@ namespace SoftBody.Scripts
                     }
                     case GraphColouringMethod.SpectralPartitioning:
                     {
-                        clusters = GraphColouring.CreateClustersWithSpectralPartitioning(_constraints, _particles.Count);
+                        clusters = GraphColouring.CreateClustersWithSpectralPartitioning(_constraints,
+                            _particles.Count);
                         GraphColouring.ColourClusters(clusters, _constraints);
                         break;
                     }
@@ -158,7 +164,7 @@ namespace SoftBody.Scripts
                         Debug.LogError($"Unknown graph colouring method: {settings.GraphColouringMethod}");
                         break;
                 }
-          
+
             }
             catch (System.Exception e)
             {
@@ -168,28 +174,29 @@ namespace SoftBody.Scripts
 
         private void SetupBuffers()
         {
-            
+
             if (_particles == null || _particles.Count == 0)
             {
                 Debug.LogError("No particles generated! Check mesh input.");
                 settings.useCPUFallback = true;
                 return;
             }
-    
+
             if (_constraints == null || _constraints.Count == 0)
             {
                 Debug.LogError("No constraints generated! Check mesh topology.");
                 settings.useCPUFallback = true;
                 return;
             }
-            
+
             // Create compute buffers
             _particleBuffer = new ComputeBuffer(_particles.Count, SizeOf<Particle>());
             _constraintBuffer = new ComputeBuffer(_constraints.Count, SizeOf<Constraint>());
             _vertexBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _indexBuffer = new ComputeBuffer(_indices.Count, sizeof(int));
             _debugBuffer = new ComputeBuffer(1, sizeof(float) * 4);
-            _volumeConstraintBuffer = new ComputeBuffer(Mathf.Max(1, _volumeConstraints.Count), SizeOf<VolumeConstraint>());
+            _volumeConstraintBuffer =
+                new ComputeBuffer(Mathf.Max(1, _volumeConstraints.Count), SizeOf<VolumeConstraint>());
             _previousPositionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
             _colliderBuffer = new ComputeBuffer(64, SizeOf<SDFCollider>());
             _collisionCorrectionsBuffer = new ComputeBuffer(_particles.Count, sizeof(float) * 3);
@@ -204,9 +211,8 @@ namespace SoftBody.Scripts
 
             // Create mesh
             _mesh = new Mesh();
-            _mesh.name = settings.inputMesh != null ? 
-                $"SoftBody_{settings.inputMesh.name}" : "SoftBody_Procedural";
-    
+            _mesh.name = settings.inputMesh != null ? $"SoftBody_{settings.inputMesh.name}" : "SoftBody_Procedural";
+
             var vertices = new Vector3[_particles.Count];
             for (var i = 0; i < _particles.Count; i++)
             {
@@ -215,7 +221,7 @@ namespace SoftBody.Scripts
 
             _mesh.vertices = vertices;
             _mesh.triangles = _indices.ToArray();
-    
+
             // Apply welded UVs if available
             if (_weldedUVs != null && _weldedUVs.Length == _particles.Count)
             {
@@ -226,7 +232,7 @@ namespace SoftBody.Scripts
             {
                 Debug.LogWarning($"UV count mismatch: {_weldedUVs.Length} UVs vs {_particles.Count} particles");
             }
-    
+
             _mesh.RecalculateNormals();
             _mesh.RecalculateBounds();
 
@@ -264,7 +270,8 @@ namespace SoftBody.Scripts
                 var fallbackMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
                 fallbackMaterial.color = Color.cyan;
                 meshRenderer.material = fallbackMaterial;
-                Debug.LogWarning("No material assigned! Using fallback URP/Lit material. Please assign a material in the SoftBodySettings.");
+                Debug.LogWarning(
+                    "No material assigned! Using fallback URP/Lit material. Please assign a material in the SoftBodySettings.");
             }
 
             // Ensure proper lighting setup
@@ -279,7 +286,7 @@ namespace SoftBody.Scripts
                 _mesh.RecalculateNormals();
                 _mesh.RecalculateTangents(); // Important for normal mapping in URP
             }
-            
+
             // if (settings.enableCollision && GetComponent<Collider>() == null)
             // {
             //     // Use a simple collider approximation instead
@@ -292,7 +299,7 @@ namespace SoftBody.Scripts
         {
             if (settings.useCPUFallback)
             {
-              //  UpdateCPU();
+                //  UpdateCPU();
                 return;
             }
 
@@ -307,12 +314,12 @@ namespace SoftBody.Scripts
                 Debug.LogError("Particle buffer not initialized!");
                 return;
             }
-            
-            if(renderMaterial && _vertexBuffer != null)
+
+            if (renderMaterial && _vertexBuffer != null)
             {
                 renderMaterial.SetBuffer(Constants.Vertices, _vertexBuffer);
             }
-            
+
             var targetDeltaTime = 1f / 60f; // 60 Hz physics
             var frameTime = Time.deltaTime;
 
@@ -334,43 +341,44 @@ namespace SoftBody.Scripts
 
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
         {
-            
+
             SetComputeShaderParameters(deltaTime);
             if (settings.enableCollision)
             {
-                 UpdateColliders();
+                UpdateColliders();
             }
+
             BindBuffers();
-            
+
             // Integrate particles
             var constraintThreadGroups = Mathf.CeilToInt(_constraints.Count / 64f);
             var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
             var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
-            
+
             if (constraintThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelDecayLambdas, constraintThreadGroups, 1, 1);
             }
-            
+
             if (particleThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelIntegrateAndStore, particleThreadGroups, 1, 1);
             }
-            
+
             for (var iter = 0; iter < settings.solverIterations; iter++)
             {
                 var maxColourGroup = GetMaxColourGroup();
 
                 for (var colourGroup = 0; colourGroup <= maxColourGroup; colourGroup++)
                 {
-                    
+
                     computeShader.SetInt(Constants.CurrentColourGroup, colourGroup);
-                    
+
                     if (constraintThreadGroups > 0)
                     {
                         computeShader.Dispatch(_kernelSolveConstraints, constraintThreadGroups, 1, 1);
                     }
-                    
+
                     if (_volumeConstraints.Count > 0 && colourGroup == 0)
                     {
                         computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
@@ -379,16 +387,16 @@ namespace SoftBody.Scripts
 
                 if (_colliders.Count > 0)
                 {
-                   computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
-                   computeShader.Dispatch(_kernelApplyCollisionCorrections, particleThreadGroups, 1, 1);
+                    computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
+                    computeShader.Dispatch(_kernelApplyCollisionCorrections, particleThreadGroups, 1, 1);
                 }
             }
-            
+
             if (particleThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelUpdateVelocities, particleThreadGroups, 1, 1);
             }
-            
+
             // Update mesh vertices (only on last substep to save bandwidth)
             if (isLastSubstep)
             {
@@ -397,16 +405,17 @@ namespace SoftBody.Scripts
                     computeShader.Dispatch(_kernelUpdateMesh, particleThreadGroups, 1, 1);
                 }
             }
-            
+
             computeShader.Dispatch(_kernelDebugAndValidate, 1, 1, 1);
-            
+
             if (Time.frameCount % 10 == 0 && settings.debugMode)
             {
                 var debugData = new float[4];
                 _debugBuffer.GetData(debugData);
                 if (debugData[0] > 0 || debugData[1] > 0)
                 {
-                    Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, First Bad Particle Index: {debugData[3]}");
+                    Debug.LogError(
+                        $"INSTABILITY DETECTED! NaN Count: {debugData[0]}, Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, First Bad Particle Index: {debugData[3]}");
                 }
                 else
                 {
@@ -419,32 +428,35 @@ namespace SoftBody.Scripts
         {
             computeShader.SetBuffer(_kernelIntegrateAndStore, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelIntegrateAndStore, Constants.PreviousPositions, _previousPositionsBuffer);
-            
+
             computeShader.SetBuffer(_kernelSolveConstraints, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelSolveConstraints, Constants.Constraints, _constraintBuffer);
-            
+
             computeShader.SetBuffer(_kernelUpdateMesh, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelUpdateMesh, Constants.Vertices, _vertexBuffer);
             computeShader.SetBuffer(_kernelDecayLambdas, Constants.Constraints, _constraintBuffer);
-            
+
             computeShader.SetBuffer(_kernelVolumeConstraints, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelVolumeConstraints, Constants.VolumeConstraints, _volumeConstraintBuffer);
-            
+
             computeShader.SetBuffer(_kernelUpdateVelocities, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelUpdateVelocities, Constants.PreviousPositions, _previousPositionsBuffer);
-            
+
             computeShader.SetBuffer(_kernelDebugAndValidate, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelDebugAndValidate, Constants.DebugBuffer, _debugBuffer);
-            
+
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Particles, _particleBuffer);
             computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.Colliders, _colliderBuffer);
-            computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.CollisionCorrections, _collisionCorrectionsBuffer);
+            computeShader.SetBuffer(_kernelSolveGeneralCollisions, Constants.CollisionCorrections,
+                _collisionCorrectionsBuffer);
 
             computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.Particles, _particleBuffer);
-            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.CollisionCorrections, _collisionCorrectionsBuffer);
-            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.PreviousPositions, _previousPositionsBuffer);
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.CollisionCorrections,
+                _collisionCorrectionsBuffer);
+            computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.PreviousPositions,
+                _previousPositionsBuffer);
         }
-        
+
 
         private void SetComputeShaderParameters(float deltaTime)
         {
@@ -465,7 +477,7 @@ namespace SoftBody.Scripts
             if (settings.floorTransform)
             {
                 var planeNormal = settings.floorTransform.up;
-        
+
                 // The distance of the plane from the world origin (0,0,0) is calculated
                 // by projecting the plane's position onto its own normal.
                 var planeDistance = Vector3.Dot(settings.floorTransform.position, planeNormal);
@@ -480,16 +492,18 @@ namespace SoftBody.Scripts
                 var floorPlane = SDFCollider.CreatePlane(Vector3.up, 0);
                 _colliders.Add(floorPlane);
             }
-            
-            
+
+
             // Example: Find all GameObjects with a specific tag and add them
-             foreach (var sphereCollider in FindObjectsByType<SphereCollider>(FindObjectsSortMode.None))
+            foreach (var sphereCollider in FindObjectsByType<SphereCollider>(FindObjectsSortMode.None))
             {
                 if (_colliders.Count >= 64)
                 {
                     break;
                 } // Don't exceed buffer capacity
-                var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position, sphereCollider.radius * sphereCollider.transform.lossyScale.x);
+
+                var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position,
+                    sphereCollider.radius * sphereCollider.transform.lossyScale.x);
                 _colliders.Add(sphere);
             }
 
@@ -498,9 +512,10 @@ namespace SoftBody.Scripts
             {
                 _colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
             }
+
             computeShader.SetInt(Constants.ColliderCount, _colliders.Count);
         }
-        
+
 
         private int GetMaxColourGroup()
         {
@@ -629,9 +644,9 @@ namespace SoftBody.Scripts
             {
                 Destroy(_mesh);
             }
-            
+
         }
-        
+
         private void ReleaseBuffers()
         {
             _particleBuffer?.Release();
@@ -643,9 +658,9 @@ namespace SoftBody.Scripts
             _previousPositionsBuffer?.Release();
             _colliderBuffer?.Release();
             _collisionCorrectionsBuffer?.Release();
-    
+
             // Set them to null so we know they are released
-            _particleBuffer = null; 
+            _particleBuffer = null;
             _constraintBuffer = null;
             _vertexBuffer = null;
             _indexBuffer = null;
@@ -654,7 +669,7 @@ namespace SoftBody.Scripts
             _previousPositionsBuffer = null;
             _colliderBuffer = null;
             _collisionCorrectionsBuffer = null;
-    
+
         }
 
         private void OnValidate()
@@ -662,15 +677,16 @@ namespace SoftBody.Scripts
             // Regenerate mesh when settings change in editor
             if (Application.isPlaying && _particles != null)
             {
-                
+
                 ReleaseBuffers();
-                
-                SoftBodyGenerator.GenerateCube(settings, transform, out _particles, out _constraints, out _volumeConstraints, out _indices);
+
+                SoftBodyGenerator.GenerateCube(settings, transform, out _particles, out _constraints,
+                    out _volumeConstraints, out _indices);
                 SetupBuffers();
                 ResetToInitialPositions();
             }
         }
-        
+
         private void ValidateAllData()
         {
             int particleCount = _particles.Count;
@@ -679,7 +695,7 @@ namespace SoftBody.Scripts
                 Debug.Log("Validation skipped: No particles.");
                 return;
             }
-        
+
             // --- Validate Constraints ---
             for (int i = 0; i < _constraints.Count; i++)
             {
@@ -687,16 +703,18 @@ namespace SoftBody.Scripts
                 if (c.ParticleA < 0 || c.ParticleA >= particleCount ||
                     c.ParticleB < 0 || c.ParticleB >= particleCount)
                 {
-                    Debug.LogError($"CRITICAL ERROR IN CONSTRAINT DATA! Constraint at index {i} has invalid particle indices: A={c.ParticleA}, B={c.ParticleB}. Particle count is {particleCount}. THIS WILL CAUSE A GPU CRASH.");
+                    Debug.LogError(
+                        $"CRITICAL ERROR IN CONSTRAINT DATA! Constraint at index {i} has invalid particle indices: A={c.ParticleA}, B={c.ParticleB}. Particle count is {particleCount}. THIS WILL CAUSE A GPU CRASH.");
                     settings.useCPUFallback = true; // Halt simulation
                     return;
                 }
+
                 if (c.RestLength <= 0)
                 {
                     Debug.LogWarning($"Constraint at index {i} has zero or negative rest length: {c.RestLength}");
                 }
             }
-        
+
             // --- Validate Volume Constraints ---
             for (int i = 0; i < _volumeConstraints.Count; i++)
             {
@@ -706,14 +724,33 @@ namespace SoftBody.Scripts
                     vc.P3 < 0 || vc.P3 >= particleCount ||
                     vc.P4 < 0 || vc.P4 >= particleCount)
                 {
-                    Debug.LogError($"CRITICAL ERROR IN VOLUME CONSTRAINT DATA! VolumeConstraint at index {i} has invalid particle indices. P1={vc.P1}, P2={vc.P2}, P3={vc.P3}, P4={vc.P4}. THIS WILL CAUSE A GPU CRASH.");
+                    Debug.LogError(
+                        $"CRITICAL ERROR IN VOLUME CONSTRAINT DATA! VolumeConstraint at index {i} has invalid particle indices. P1={vc.P1}, P2={vc.P2}, P3={vc.P3}, P4={vc.P4}. THIS WILL CAUSE A GPU CRASH.");
                     settings.useCPUFallback = true; // Halt simulation
                     return;
                 }
             }
-            
+
             Debug.Log("CPU Data Validation PASSED. All constraint indices are within particle bounds.");
         }
+        
+        public void SetParticleData(Particle[] inputArray)
+        {
+            if (_particleBuffer != null && inputArray.Length == _particles.Count)
+            {
+                _particleBuffer.SetData(inputArray);
+            }
+        }
+        public void GetParticleData(Particle[] outputArray)
+        {
+            if (_particleBuffer != null && outputArray.Length >= _particles.Count)
+            {
+                _particleBuffer.GetData(outputArray, 0, 0, _particles.Count);
+            }
+        }
+
+// Improve the ApplyContinuousForce method
+
 
         #region Designer Methods
 
@@ -732,7 +769,7 @@ namespace SoftBody.Scripts
                     p.Force.x = forceToApply.x;
                     p.Force.y = forceToApply.y;
                     p.Force.z = forceToApply.z;
-                    
+
                     _particles[i] = p;
                 }
             }
@@ -740,54 +777,7 @@ namespace SoftBody.Scripts
             _particleBuffer.SetData(_particles);
             Debug.Log($"Applied force {force} to {_particles.Count} particles");
         }
-
-        public void PokeParticle(Vector3 worldPosition, Vector3 impulse)
-        {
-            if (_particles == null || _particles.Count == 0 || _particleBuffer == null)
-            {
-                Debug.LogWarning("Cannot poke, physics system not initialized.");
-                return;
-            }
-            
-            var currentParticles = new Particle[_particles.Count];
-            _particleBuffer.GetData(currentParticles);
-
-            var closestParticleIndex = -1;
-            var minDistanceSq = float.MaxValue;
-
-            for (var i = 0; i < currentParticles.Length; i++)
-            {
-                var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - worldPosition);
-                if (distSq < minDistanceSq)
-                {
-                    minDistanceSq = distSq;
-                    closestParticleIndex = i;
-                }
-            }
-
-            if (closestParticleIndex != -1)
-            {
-                Debug.Log($"Poking particle {closestParticleIndex} with impulse {impulse}.");
-                
-                var p = currentParticles[closestParticleIndex];
-                
-                if (p.InvMass > 0)
-                {
-                    var deltaVelocity = impulse * p.InvMass;
-                    p.Velocity.x += deltaVelocity.x;
-                    p.Velocity.y += deltaVelocity.y;
-                    p.Velocity.z += deltaVelocity.z;
-
-                    currentParticles[closestParticleIndex] = p;
-                    
-                    _particleBuffer.SetData(currentParticles, closestParticleIndex, closestParticleIndex, 1);
-                }
-                else
-                {
-                    Debug.Log($"Attempted to poke particle {closestParticleIndex}, but it is pinned (invMass = 0).");
-                }
-            }
-        }
+        
 
         public void SetPinned(Vector3 position, float radius = 0.5f, bool pinned = true)
         {
@@ -805,8 +795,94 @@ namespace SoftBody.Scripts
 
             _particleBuffer.SetData(_particles);
         }
+        
+        public void PokeAtPosition(Vector3 worldPosition, Vector3 impulse, float radius = 1f)
+        {
+            if (_particles == null || _particles.Count == 0 || _particleBuffer == null)
+            {
+                Debug.LogWarning("Cannot poke, physics system not initialized.");
+                return;
+            }
+
+            // Get current particle data
+            var currentParticles = new Particle[_particles.Count];
+            _particleBuffer.GetData(currentParticles);
+
+            var affectedParticles = new List<int>();
+            var radiusSq = radius * radius;
+
+            // Find all particles within radius
+            for (var i = 0; i < currentParticles.Length; i++)
+            {
+                var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - worldPosition);
+                if (distSq <= radiusSq && currentParticles[i].InvMass > 0)
+                {
+                    affectedParticles.Add(i);
+                }
+            }
+
+            if (affectedParticles.Count == 0) return;
+
+            Debug.Log($"Poking {affectedParticles.Count} particles at {worldPosition}");
+
+            // Apply impulse with falloff
+            foreach (var idx in affectedParticles)
+            {
+                var p = currentParticles[idx];
+                var distance = Vector3.Distance(p.Position, worldPosition);
+                var falloff = 1f - (distance / radius);
+
+                var deltaVelocity = impulse * falloff * p.InvMass;
+                p.Velocity.x += deltaVelocity.x;
+                p.Velocity.y += deltaVelocity.y;
+                p.Velocity.z += deltaVelocity.z;
+
+                currentParticles[idx] = p;
+            }
+
+            // Upload modified particles back to GPU
+            _particleBuffer.SetData(currentParticles);
+        }
+
+// Add continuous force application
+        public void ApplyContinuousForce(Vector3 worldPosition, Vector3 force, float radius = 1f)
+        {
+            if (_particles == null || _particleBuffer == null) return;
+    
+            // Use a more efficient approach - only read/write affected particles
+            var currentParticles = new Particle[_particles.Count];
+            _particleBuffer.GetData(currentParticles);
+    
+            var radiusSq = radius * radius;
+            var modifiedIndices = new List<int>();
+    
+            for (var i = 0; i < currentParticles.Length; i++)
+            {
+                var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - worldPosition);
+                if (distSq <= radiusSq && currentParticles[i].InvMass > 0)
+                {
+                    var p = currentParticles[i];
+                    var distance = Mathf.Sqrt(distSq);
+                    var falloff = 1f - (distance / radius);
+            
+                    // Apply force as velocity change (more responsive)
+                    var deltaVelocity = force * falloff * p.InvMass * Time.deltaTime;
+                    p.Velocity.x += deltaVelocity.x;
+                    p.Velocity.y += deltaVelocity.y;
+                    p.Velocity.z += deltaVelocity.z;
+            
+                    currentParticles[i] = p;
+                    modifiedIndices.Add(i);
+                }
+            }
+    
+            if (modifiedIndices.Count > 0)
+            {
+                _particleBuffer.SetData(currentParticles);
+            }
+        }
 
         #endregion
-        
+
     }
 }

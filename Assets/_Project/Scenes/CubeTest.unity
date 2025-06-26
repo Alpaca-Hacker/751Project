@@ -2957,7 +2957,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &675793119
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2994,15 +2994,15 @@ MonoBehaviour:
     inputMesh: {fileID: 4300000, guid: c94512efc653e4244a5d686f7afcf057, type: 3}
     useProceduralCube: 0
     useTetrahedralizationForHighPoly: 1
-    maxSurfaceVerticesBeforeTetra: 500
-    interiorPointDensity: 0.3
+    maxSurfaceVerticesBeforeTetra: 100
+    interiorPointDensity: 0.8
     size: {x: 1, y: 1, z: 1}
     resolution: 4
     preserveUVs: 1
     preserveNormals: 1
     constraintDensityMultiplier: 1.5
     autoFixConnectivity: 1
-    connectivityMethod: 0
+    connectivityMethod: 2
     mass: 1
     damping: 0.03
     gravity: 10
@@ -3882,8 +3882,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 81eb1c8f4d6848f8ba807ed69534bc00, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  targetSoftBody: {fileID: 1094367040}
+  targetSoftBody: {fileID: 675793120}
   pokeStrength: 100
+  pokeRadius: 0.5
+  continuousForceStrength: 5
+  enablePoke: 1
+  enableContinuousForce: 1
+  enableGrab: 1
+  interactionIndicatorPrefab: {fileID: 0}
+  showVisualFeedback: 1
 --- !u!4 &918751821
 Transform:
   m_ObjectHideFlags: 0
@@ -4382,7 +4389,7 @@ MonoBehaviour:
     connectivityMethod: 0
     mass: 1
     damping: 0.03
-    gravity: 10
+    gravity: 2
     lambdaDecay: 0
     solverIterations: 10
     structuralCompliance: 0.00001
@@ -4942,7 +4949,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1347859661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4979,18 +4986,18 @@ MonoBehaviour:
     inputMesh: {fileID: -126709643765493106, guid: 5c25ae2305714884ab056287c917ee89, type: 3}
     useProceduralCube: 0
     useTetrahedralizationForHighPoly: 1
-    maxSurfaceVerticesBeforeTetra: 500
-    interiorPointDensity: 0.3
+    maxSurfaceVerticesBeforeTetra: 100
+    interiorPointDensity: 0.8
     size: {x: 1, y: 1, z: 1}
     resolution: 4
     preserveUVs: 1
     preserveNormals: 1
     constraintDensityMultiplier: 1.5
     autoFixConnectivity: 1
-    connectivityMethod: 2
+    connectivityMethod: 1
     mass: 1
     damping: 0.03
-    gravity: 0.1
+    gravity: 1
     lambdaDecay: 0
     solverIterations: 25
     structuralCompliance: 0.0000001
@@ -5069,7 +5076,7 @@ Transform:
   m_GameObject: {fileID: 1347859660}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.5, z: 0}
+  m_LocalPosition: {x: 0, y: 2, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 1
   m_Children: []
