@@ -1,0 +1,74 @@
+{
+    "name": "CameraInput",
+    "maps": [
+        {
+            "name": "Camera",
+            "id": "25810844-0fe3-4ea8-a823-8efc9dc0705f",
+            "actions": [
+                {
+                    "name": "Look",
+                    "type": "Value",
+                    "id": "64814f15-7bb8-465e-b4ec-5070c12ddd8c",
+                    "expectedControlType": "Vector2",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Zoon",
+                    "type": "Value",
+                    "id": "b0d1f93f-c611-4569-bbd6-738bc62741e2",
+                    "expectedControlType": "Axis",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "CameraControl",
+                    "type": "Button",
+                    "id": "3e0fcd6b-521c-47d1-a514-599a1785797c",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "37800eea-9aa7-4109-8e96-62d2148b65b6",
+                    "path": "<Mouse>/delta",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Look",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "4c44bbbc-7ecf-4d41-a0a0-3361ab57a7ee",
+                    "path": "<Mouse>/scroll/up",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Zoon",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "2749ffbf-c625-46b7-b929-8e5269affd06",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "CameraControl",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
