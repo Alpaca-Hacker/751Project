@@ -34,6 +34,19 @@ namespace SoftBody.Scripts
         public float lambdaDecay = 0.99f;
         public int solverIterations = 4;
         
+        [Header("Stuffing Behavior")]
+        public bool enableStuffingMode = true;
+        public float stuffingDensity = 0.5f;           // How densely packed the interior is
+        public float pressureResistance = 2.0f;        // How much it resists compression
+        public float skinFlexibility = 3.0f;           // How flexible the "skin" is
+        public float stuffingStiffness = 0.1f;         // How stiff the internal stuffing is
+        public int maxStuffingParticles = 30;
+        public int maxStuffingConstraints = 200;
+        public int maxSkinConstraints = 150;
+        public int maxVolumeConstraints = 50;
+        public int maxAdditionalConstraints = 500;
+        public bool enablePerformanceLimits = true;
+        
         [Header("Constraint Compliance")]
 
         public float structuralCompliance = 0.0001f; 
@@ -52,7 +65,8 @@ namespace SoftBody.Scripts
         public bool useCPUFallback = false;
         public bool debugMode;
         public GraphColouringMethod GraphColouringMethod = GraphColouringMethod.None;
-        
+       
+
 
         public void LogSettings()
         {

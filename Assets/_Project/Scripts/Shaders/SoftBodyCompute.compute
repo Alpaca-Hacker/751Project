@@ -44,6 +44,7 @@ struct VolumeConstraint
     float restVolume;
     float compliance;
     float lambda;
+    float pressureMultiplier;
 };
 
 // Buffers
@@ -354,8 +355,23 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
     float3 grad4 = -grad1 - grad2 - grad3;
 
     // Constraint error (current volume - rest volume)
-    float currentVolume = dot(p1.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, cross(p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz, p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz)) / 6.0;
-    float C = currentVolume - vc.restVolume;
+    float currentVolume = dot(p1.positionAndInvMass.xyz - p4.positionAndInvMass.xyz,
+        cross(p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz,
+            p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz)) / 6.0;
+
+    float volumeRatio = currentVolume / vc.restVolume;
+    float pressureFactor = vc.pressureMultiplier;
+
+    if (volumeRatio < 1.0) //Compression
+    {
+        pressureFactor *= 2.0 - volumeRatio;
+    }
+    else
+    {
+        pressureFactor *= 0.5;
+    }
+    
+    float C = currentVolume - vc.restVolume * pressureFactor;
 
     if (abs(C) < 0.0001 * vc.restVolume) return;
 

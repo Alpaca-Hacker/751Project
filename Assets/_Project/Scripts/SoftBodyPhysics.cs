@@ -123,7 +123,7 @@ namespace SoftBody.Scripts
 
             try
             {
-                var clusters = new List<Cluster>();
+                List<Cluster> clusters;
                 switch (settings.GraphColouringMethod)
                 {
                     case GraphColouringMethod.Naive:
@@ -284,19 +284,12 @@ namespace SoftBody.Scripts
 
         private void SetupLighting()
         {
-            // Ensure the mesh has proper normals for lighting
-            if (_mesh != null)
+     
+            if (_mesh)
             {
                 _mesh.RecalculateNormals();
-                _mesh.RecalculateTangents(); // Important for normal mapping in URP
+                _mesh.RecalculateTangents(); 
             }
-
-            // if (settings.enableCollision && GetComponent<Collider>() == null)
-            // {
-            //     // Use a simple collider approximation instead
-            //     var sphereCollider = gameObject.AddComponent<SphereCollider>();
-            //     sphereCollider.isTrigger = true; // For interaction detection only
-            // }
         }
 
         private void Update()
@@ -683,17 +676,14 @@ namespace SoftBody.Scripts
             {
 
                 ReleaseBuffers();
-
-                SoftBodyGenerator.GenerateCube(settings, transform, out _particles, out _constraints,
-                    out _volumeConstraints, out _indices);
                 SetupBuffers();
-                ResetToInitialPositions();
+                ResetToInitialState();
             }
         }
 
         private void ValidateAllData()
         {
-            int particleCount = _particles.Count;
+            var particleCount = _particles.Count;
             if (particleCount == 0)
             {
                 Debug.Log("Validation skipped: No particles.");
@@ -701,9 +691,9 @@ namespace SoftBody.Scripts
             }
 
             // --- Validate Constraints ---
-            for (int i = 0; i < _constraints.Count; i++)
+            for (var i = 0; i < _constraints.Count; i++)
             {
-                Constraint c = _constraints[i];
+                var c = _constraints[i];
                 if (c.ParticleA < 0 || c.ParticleA >= particleCount ||
                     c.ParticleB < 0 || c.ParticleB >= particleCount)
                 {
@@ -720,9 +710,9 @@ namespace SoftBody.Scripts
             }
 
             // --- Validate Volume Constraints ---
-            for (int i = 0; i < _volumeConstraints.Count; i++)
+            for (var i = 0; i < _volumeConstraints.Count; i++)
             {
-                VolumeConstraint vc = _volumeConstraints[i];
+                var vc = _volumeConstraints[i];
                 if (vc.P1 < 0 || vc.P1 >= particleCount ||
                     vc.P2 < 0 || vc.P2 >= particleCount ||
                     vc.P3 < 0 || vc.P3 >= particleCount ||
@@ -769,9 +759,9 @@ namespace SoftBody.Scripts
     
             // Reset particles to initial positions and clear velocities
             var resetParticles = new List<Particle>();
-            for (int i = 0; i < _initialParticles.Count; i++)
+            foreach (var particle in _initialParticles)
             {
-                var p = _initialParticles[i];
+                var p = particle;
                 p.Velocity = Vector4.zero;  // Clear velocity
                 p.Force = Vector4.zero;     // Clear forces
                 resetParticles.Add(p);
@@ -782,7 +772,7 @@ namespace SoftBody.Scripts
             _particleBuffer.SetData(_particles);
     
             // Reset constraint lambdas
-            for (int i = 0; i < _constraints.Count; i++)
+            for (var i = 0; i < _constraints.Count; i++)
             {
                 var c = _constraints[i];
                 c.Lambda = 0f;
@@ -791,7 +781,7 @@ namespace SoftBody.Scripts
             _constraintBuffer.SetData(_constraints);
     
             // Reset volume constraint lambdas
-            for (int i = 0; i < _volumeConstraints.Count; i++)
+            for (var i = 0; i < _volumeConstraints.Count; i++)
             {
                 var vc = _volumeConstraints[i];
                 vc.Lambda = 0f;
@@ -809,7 +799,7 @@ namespace SoftBody.Scripts
             var currentParticles = new Particle[_particles.Count];
             _particleBuffer.GetData(currentParticles);
     
-            for (int i = 0; i < currentParticles.Length; i++)
+            for (var i = 0; i < currentParticles.Length; i++)
             {
                 var p = currentParticles[i];
                 p.Velocity = Vector4.zero;
@@ -857,7 +847,7 @@ namespace SoftBody.Scripts
                 var distance = Vector3.Distance(p.Position, worldPosition);
                 var falloff = 1f - (distance / radius);
 
-                var deltaVelocity = impulse * falloff * p.InvMass;
+                var deltaVelocity = impulse * (falloff * p.InvMass);
                 p.Velocity.x += deltaVelocity.x;
                 p.Velocity.y += deltaVelocity.y;
                 p.Velocity.z += deltaVelocity.z;
@@ -891,7 +881,7 @@ namespace SoftBody.Scripts
                     var falloff = 1f - (distance / radius);
             
                     // Apply force as velocity change (more responsive)
-                    var deltaVelocity = force * falloff * p.InvMass * Time.deltaTime;
+                    var deltaVelocity = force * (falloff * p.InvMass * Time.deltaTime);
                     p.Velocity.x += deltaVelocity.x;
                     p.Velocity.y += deltaVelocity.y;
                     p.Velocity.z += deltaVelocity.z;

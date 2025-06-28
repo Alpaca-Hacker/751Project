@@ -6,5 +6,6 @@ namespace SoftBody.Scripts.Models
         public float RestVolume;
         public float Compliance;
         public float Lambda;
+        public float PressureMultiplier;
     }
 }
