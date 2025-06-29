@@ -718,7 +718,7 @@ namespace SoftBody.Scripts
                     
                     volumesChecked++;
                     
-                    Debug.Log($"Tetrahedron {p1}-{p2}-{p3}-{p4}: volume = {restVolume:F6}, abs = {Mathf.Abs(restVolume):F6}");
+                  //  Debug.Log($"Tetrahedron {p1}-{p2}-{p3}-{p4}: volume = {restVolume:F6}, abs = {Mathf.Abs(restVolume):F6}");
 
                     // Only create if volume is reasonable
                     if (Mathf.Abs(restVolume) > 0.00001f)
@@ -778,11 +778,11 @@ namespace SoftBody.Scripts
 
                 volumesChecked++;
 
-                if (volumesChecked <= 5) // Log first few for debugging
-                {
-                    Debug.Log(
-                        $"Fallback tetrahedron {p1}-{p2}-{p3}-{p4}: volume = {restVolume:F6}, abs = {Mathf.Abs(restVolume):F6}");
-                }
+                // if (volumesChecked <= 5) // Log first few for debugging
+                // {
+                //     Debug.Log(
+                //         $"Fallback tetrahedron {p1}-{p2}-{p3}-{p4}: volume = {restVolume:F6}, abs = {Mathf.Abs(restVolume):F6}");
+                // }
 
                 if (Mathf.Abs(restVolume) > 0.00001f) // Lower threshold
                 {

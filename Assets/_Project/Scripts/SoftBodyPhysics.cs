@@ -46,11 +46,16 @@ namespace SoftBody.Scripts
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
         private List<Particle> _initialParticles;
+        
+        private SoftBodyProfiler _profiler;
+        private System.Diagnostics.Stopwatch _frameStopwatch = new();
 
         private void Start()
         {
             try
             {
+                _profiler = gameObject.AddComponent<SoftBodyProfiler>();
+                
                 Debug.Log("SoftBodySimulator: Starting initialization...");
                 InitializeComputeShader();
 
@@ -344,7 +349,14 @@ namespace SoftBody.Scripts
 
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
         {
+            // Start overall frame timing
+            var frameTimer = System.Diagnostics.Stopwatch.StartNew();
+            var stepTimer = System.Diagnostics.Stopwatch.StartNew();
 
+            // Initialize metrics
+            var metrics = new PerformanceMetrics();
+
+            // Set compute shader parameters (unchanged)
             SetComputeShaderParameters(deltaTime);
             if (settings.enableCollision)
             {
@@ -358,22 +370,47 @@ namespace SoftBody.Scripts
             var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
             var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
 
+            // === LAMBDA DECAY ===
+            SoftBodyProfiler.BeginSample("LambdaDecay");
+            stepTimer.Restart();
+
             if (constraintThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelDecayLambdas, constraintThreadGroups, 1, 1);
             }
+
+            var lambdaDecayTime = (float)stepTimer.Elapsed.TotalMilliseconds;
+            SoftBodyProfiler.EndSample("LambdaDecay");
+
+            // === INTEGRATION ===
+            SoftBodyProfiler.BeginSample("Integration");
+            stepTimer.Restart();
 
             if (particleThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelIntegrateAndStore, particleThreadGroups, 1, 1);
             }
 
+            metrics.integrationTime = (float)stepTimer.Elapsed.TotalMilliseconds;
+            SoftBodyProfiler.EndSample("Integration");
+
+            // === CONSTRAINT SOLVING LOOP ===
+            SoftBodyProfiler.BeginSample("ConstraintSolving");
+
+            // Timing accumulators for detailed metrics
+            float totalConstraintTime = 0f;
+            float totalVolumeTime = 0f;
+            float totalCollisionTime = 0f;
+
+          
             for (var iter = 0; iter < settings.solverIterations; iter++)
             {
                 var maxColourGroup = GetMaxColourGroup();
 
                 for (var colourGroup = 0; colourGroup <= maxColourGroup; colourGroup++)
                 {
+                    // Time constraint solving per colour group
+                    stepTimer.Restart();
 
                     computeShader.SetInt(Constants.CurrentColourGroup, colourGroup);
 
@@ -382,35 +419,63 @@ namespace SoftBody.Scripts
                         computeShader.Dispatch(_kernelSolveConstraints, constraintThreadGroups, 1, 1);
                     }
 
+                    totalConstraintTime += (float)stepTimer.Elapsed.TotalMilliseconds;
+
+                    // Volume constraints
                     if (_volumeConstraints.Count > 0 && colourGroup == 0)
                     {
+                        stepTimer.Restart();
                         computeShader.Dispatch(_kernelVolumeConstraints, volumeConstraintThreadGroups, 1, 1);
+                        totalVolumeTime += (float)stepTimer.Elapsed.TotalMilliseconds;
                     }
                 }
 
+                // Collision solving
                 if (_colliders.Count > 0)
                 {
+                    stepTimer.Restart();
                     computeShader.Dispatch(_kernelSolveGeneralCollisions, particleThreadGroups, 1, 1);
                     computeShader.Dispatch(_kernelApplyCollisionCorrections, particleThreadGroups, 1, 1);
+                    totalCollisionTime += (float)stepTimer.Elapsed.TotalMilliseconds;
                 }
             }
+
+            metrics.constraintSolvingTime = totalConstraintTime;
+            metrics.volumeConstraintTime = totalVolumeTime;
+            metrics.collisionTime = totalCollisionTime;
+            SoftBodyProfiler.EndSample("ConstraintSolving");
+
+            // === VELOCITY UPDATE (unchanged) ===
+            SoftBodyProfiler.BeginSample("VelocityUpdate");
+            stepTimer.Restart();
 
             if (particleThreadGroups > 0)
             {
                 computeShader.Dispatch(_kernelUpdateVelocities, particleThreadGroups, 1, 1);
             }
 
-            // Update mesh vertices (only on last substep to save bandwidth)
+            var velocityUpdateTime = (float)stepTimer.Elapsed.TotalMilliseconds;
+            SoftBodyProfiler.EndSample("VelocityUpdate");
+
+            // === MESH UPDATE ===
             if (isLastSubstep)
             {
+                SoftBodyProfiler.BeginSample("MeshUpdate");
+                stepTimer.Restart();
+
                 if (particleThreadGroups > 0)
                 {
                     computeShader.Dispatch(_kernelUpdateMesh, particleThreadGroups, 1, 1);
                 }
+
+                metrics.meshUpdateTime = (float)stepTimer.Elapsed.TotalMilliseconds;
+                SoftBodyProfiler.EndSample("MeshUpdate");
             }
 
+            // === DEBUG VALIDATION ===
             computeShader.Dispatch(_kernelDebugAndValidate, 1, 1, 1);
 
+            // Debug output (unchanged frequency and logic)
             if (Time.frameCount % 10 == 0 && settings.debugMode)
             {
                 var debugData = new float[4];
@@ -420,10 +485,27 @@ namespace SoftBody.Scripts
                     Debug.LogError(
                         $"INSTABILITY DETECTED! NaN Count: {debugData[0]}, Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, First Bad Particle Index: {debugData[3]}");
                 }
-                else
+                else if (settings.debugMode) // Only log stability in debug mode
                 {
                     Debug.Log($"System stable. Max Speed: {debugData[2]:F2}");
                 }
+            }
+
+            // === RECORD FINAL METRICS ===
+            metrics.totalFrameTime = (float)frameTimer.Elapsed.TotalMilliseconds;
+            metrics.activeParticles = _particles.Count;
+            metrics.activeConstraints = _constraints.Count;
+            metrics.solverIterations = settings.solverIterations;
+            metrics.memoryUsageMB = CalculateMemoryUsage();
+
+            // Additional detailed metrics
+            metrics.lambdaDecayTime = lambdaDecayTime;
+            metrics.velocityUpdateTime = velocityUpdateTime;
+
+            // Record metrics if profiler exists
+            if (_profiler != null)
+            {
+                _profiler.RecordMetrics(metrics);
             }
         }
 
@@ -749,7 +831,22 @@ namespace SoftBody.Scripts
             }
         }
 
-// Improve the ApplyContinuousForce method
+        private float CalculateMemoryUsage()
+        {
+            var totalBytes = 0f;
+    
+            if (_particleBuffer != null) totalBytes += _particleBuffer.count * _particleBuffer.stride;
+            if (_constraintBuffer != null) totalBytes += _constraintBuffer.count * _constraintBuffer.stride;
+            if (_vertexBuffer != null) totalBytes += _vertexBuffer.count * _vertexBuffer.stride;
+            if (_indexBuffer != null) totalBytes += _indexBuffer.count * _indexBuffer.stride;
+            if (_debugBuffer != null) totalBytes += _debugBuffer.count * _debugBuffer.stride;
+            if (_volumeConstraintBuffer != null) totalBytes += _volumeConstraintBuffer.count * _volumeConstraintBuffer.stride;
+            if (_previousPositionsBuffer != null) totalBytes += _previousPositionsBuffer.count * _previousPositionsBuffer.stride;
+            if (_colliderBuffer != null) totalBytes += _colliderBuffer.count * _colliderBuffer.stride;
+            if (_collisionCorrectionsBuffer != null) totalBytes += _collisionCorrectionsBuffer.count * _collisionCorrectionsBuffer.stride;
+    
+            return totalBytes / (1024f * 1024f); // Convert to MB
+        }
 
 
         #region Designer Methods
