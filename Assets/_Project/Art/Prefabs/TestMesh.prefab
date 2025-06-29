@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 7178908992147758378}
   - component: {fileID: 2396979294267986574}
   - component: {fileID: 1104825798472783800}
-  - component: {fileID: 8605056338183207524}
   m_Layer: 0
   m_Name: TestMesh
   m_TagString: Untagged
@@ -136,8 +135,15 @@ MonoBehaviour:
     enableConstraintFiltering: 1
     maxConstraintsPerParticle: 10
     maxConstraintLength: 0.12
-    structuralLengthThreshold: 0.08
-    minConstraintsPerParticle: 4
+    enableSleepSystem: 1
+    sleepVelocityThreshold: 0.005
+    sleepTimeThreshold: 1
+    wakeDistanceThreshold: 0.1
+    showSleepState: 0
+    enableMovementDampening: 1
+    stillnessThreshold: 0.01
+    dampeningStrength: 0.95
+    minMovementSpeed: 0.001
     floorTransform: {fileID: 0}
     enableCollision: 1
     collisionLayers:
@@ -148,23 +154,3 @@ MonoBehaviour:
     graphColouringMethod: 2
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
---- !u!114 &8605056338183207524
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6961618944237143482}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e7bd665f1f094a1cbfa337fd91c8edff, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  showParticles: 1
-  showConstraints: 1
-  showForces: 1
-  particleSize: 0.1
-  particleColor: {r: 1, g: 0, b: 0, a: 1}
-  constraintColor: {r: 0, g: 1, b: 0, a: 1}
-  forceColor: {r: 0, g: 0, b: 1, a: 1}
-  showPerformanceStats: 1

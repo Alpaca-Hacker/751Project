@@ -20,6 +20,9 @@ namespace SoftBody.Scripts
         public Button toggleAutoSpawnButton;
         public Slider spawnRateSlider;
         public TMP_Text spawnRateText;
+        public TMP_Text sleepCountText;
+        public TMP_Text sleepEfficiencyText;
+        public TMP_Text movementStatsText;
 
         [Header("Performance Tracking")] 
         public bool enablePerformanceLogging = true;
@@ -82,6 +85,8 @@ namespace SoftBody.Scripts
             UpdateSpawnRateText();
         }
 
+        private int _spawnTimer = 0;
+
         private void Update()
         {
             UpdateFrameRate();
@@ -90,6 +95,16 @@ namespace SoftBody.Scripts
             {
                 LogPerformanceMetrics();
                 _lastLogTime = Time.time;
+            }
+
+            if (_frameRate > 100)
+            {
+                _spawnTimer++;
+                if (_spawnTimer >= 50) // Log every 10 frames
+                {
+                    _spawner.SpawnObject();
+                    _spawnTimer = 0;
+                }
             }
         }
 
@@ -142,6 +157,8 @@ namespace SoftBody.Scripts
             {
                 UpdateDetailedDiagnostics();
             } 
+            
+            UpdateSleepSystemMetrics();
         }
 
         private void UpdateSoftBodyMetrics()
@@ -224,6 +241,64 @@ namespace SoftBody.Scripts
             {
                 var constraintRatio = (float)totalConstraints / totalParticles;
                 constraintEfficiencyText.text = $"{constraintRatio:F1}";
+            }
+        }
+
+        private void UpdateSleepSystemMetrics()
+        {
+            var allSoftBodies = FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
+
+            var sleepingCount = 0;
+            var movingCount = 0;
+            var dampenedCount = 0;
+            var totalSleepEfficiency = 0f;
+
+            foreach (var softBody in allSoftBodies)
+            {
+                if (softBody.enabled && softBody.gameObject.activeInHierarchy)
+                {
+                    if (softBody.IsAsleep)
+                    {
+                        sleepingCount++;
+                    }
+                    else if (softBody.MovementSpeed > 0.01f)
+                    {
+                        movingCount++;
+                    }
+                    else
+                    {
+                        dampenedCount++;
+                    }
+
+                    totalSleepEfficiency += softBody.SleepEfficiency;
+                }
+            }
+
+            if (sleepCountText != null)
+            {
+                sleepCountText.text =  $"Sleep States - Sleeping: {sleepingCount}, Moving: {movingCount}, Dampened: {dampenedCount}";
+            }
+
+            if (sleepEfficiencyText != null && allSoftBodies.Length > 0)
+            {
+                var avgEfficiency = totalSleepEfficiency / allSoftBodies.Length * 100f;
+                sleepEfficiencyText.text = $"{avgEfficiency:F1}%";
+
+                // Colour code efficiency
+                if (avgEfficiency >= 70f)
+                    sleepEfficiencyText.color = Color.green;
+                else if (avgEfficiency >= 40f)
+                    sleepEfficiencyText.color = Color.yellow;
+                else
+                    sleepEfficiencyText.color = Color.red;
+            }
+
+            if (movementStatsText != null)
+            {
+                var activeObjects = allSoftBodies.Length - sleepingCount;
+                var computationSaved = sleepingCount / (float)allSoftBodies.Length * 100f;
+                movementStatsText.text =
+                    $"Active Objects: {activeObjects}/{allSoftBodies.Length} ({computationSaved:F0}% computation saved)";
             }
         }
 

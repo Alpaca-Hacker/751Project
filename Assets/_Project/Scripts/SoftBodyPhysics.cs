@@ -47,16 +47,34 @@ namespace SoftBody.Scripts
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
         private List<Particle> _initialParticles;
-        
+
         private SoftBodyProfiler _profiler;
-        private System.Diagnostics.Stopwatch _frameStopwatch = new();
+
+        private bool _isAsleep = false;
+        private float _sleepTimer = 0f;
+        private Vector3 _lastPosition;
+        private Vector3 _lastCenterOfMass;
+        private int _sleepCheckCounter = 0;
+        private float _currentMovementSpeed = 0f;
+        private bool _wasPreviouslyMoving = true;
+
+        private float _lastActiveTime;
+        private float _totalSleepTime = 0f;
+        
+        private static List<SoftBodyPhysics> _allSoftBodies = new ();
+        private static float _lastCacheUpdate = 0f;
+        private static readonly float CacheUpdateInterval = 2f;
+
+        public bool IsAsleep => _isAsleep;
+        public float MovementSpeed => _currentMovementSpeed;
+        public float SleepEfficiency => Time.time > 0 ? _totalSleepTime / Time.time : 0f;
 
         private void Start()
         {
             try
             {
                 _profiler = gameObject.AddComponent<SoftBodyProfiler>();
-                
+
                 Debug.Log("SoftBodySimulator: Starting initialization...");
                 InitializeComputeShader();
 
@@ -77,6 +95,10 @@ namespace SoftBody.Scripts
                     var testParticle = _particles[0];
                     Debug.Log($"First particle position: {testParticle.Position}, invMass: {testParticle.InvMass}");
                 }
+
+                _lastPosition = transform.position;
+                _lastCenterOfMass = CalculateCenterOfMass();
+                _lastActiveTime = Time.time;
             }
             catch (System.Exception e)
             {
@@ -129,7 +151,7 @@ namespace SoftBody.Scripts
 
             try
             {
-                
+
                 List<Cluster> clusters;
                 switch (settings.graphColouringMethod)
                 {
@@ -216,10 +238,10 @@ namespace SoftBody.Scripts
             _constraintBuffer.SetData(_constraints);
             _indexBuffer.SetData(_indices);
             _volumeConstraintBuffer.SetData(_volumeConstraints);
-            
+
             // Store initial particle positions for reset functionality
             _initialParticles = new List<Particle>(_particles);
-            
+
             // Create mesh
             _mesh = new Mesh();
             _mesh.name = settings.inputMesh != null ? $"SoftBody_{settings.inputMesh.name}" : "SoftBody_Procedural";
@@ -242,7 +264,7 @@ namespace SoftBody.Scripts
             else if (_weldedUVs != null)
             {
                 Debug.LogWarning($"UV count mismatch: {_weldedUVs.Length} UVs vs {_particles.Count} particles");
-    
+
                 // Create expanded UV array if needed
                 var expandedUVs = new Vector2[_particles.Count];
                 var copyCount = Mathf.Min(_weldedUVs.Length, _particles.Count);
@@ -297,11 +319,11 @@ namespace SoftBody.Scripts
 
         private void SetupLighting()
         {
-     
+
             if (_mesh)
             {
                 _mesh.RecalculateNormals();
-                _mesh.RecalculateTangents(); 
+                _mesh.RecalculateTangents();
             }
         }
 
@@ -330,6 +352,25 @@ namespace SoftBody.Scripts
                 renderMaterial.SetBuffer(Constants.Vertices, _vertexBuffer);
             }
 
+            if (settings.enableSleepSystem || settings.enableMovementDampening)
+            {
+                UpdateMovementAndSleep();
+            }
+
+            if (settings.enableSleepSystem && _isAsleep)
+            {
+                _totalSleepTime += Time.deltaTime;
+                return; // Don't run any physics
+            }
+
+            if (settings.enableMovementDampening && ShouldApplyDampening())
+            {
+                ApplyMovementDampening();
+            }
+
+            _lastActiveTime = Time.time;
+
+
             var targetDeltaTime = 1f / 60f; // 60 Hz physics
             var frameTime = Time.deltaTime;
 
@@ -347,6 +388,7 @@ namespace SoftBody.Scripts
 
             // Update mesh (async, won't block)
             UpdateMeshFromGPU();
+            UpdateMovementTracking();
         }
 
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
@@ -366,11 +408,11 @@ namespace SoftBody.Scripts
             }
 
             BindBuffers();
-            
+
             var constraintThreadGroups = Mathf.CeilToInt(_constraints.Count / 64f);
             var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
             var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
-    
+
             // // Calculate actual thread utilization
             // var actualConstraintThreads = constraintThreadGroups * 64;
             // var actualParticleThreads = particleThreadGroups * 64;
@@ -379,7 +421,7 @@ namespace SoftBody.Scripts
             // var constraintUtilization = _constraints.Count / (float)actualConstraintThreads * 100f;
             // var particleUtilization = _particles.Count / (float)actualParticleThreads * 100f;
             // var volumeUtilization = _volumeConstraints.Count > 0 ? _volumeConstraints.Count / (float)actualVolumeThreads * 100f : 0f;
-    
+
             // Log every 60 frames
             // if (Time.frameCount % 60 == 0)
             // {
@@ -427,7 +469,7 @@ namespace SoftBody.Scripts
             var totalVolumeTime = 0f;
             var totalCollisionTime = 0f;
 
-          
+
             for (var iter = 0; iter < settings.solverIterations; iter++)
             {
                 var maxColourGroup = GetMaxColourGroup();
@@ -727,25 +769,194 @@ namespace SoftBody.Scripts
             }
         }
 
-        private void ResetToInitialPositions()
+        private void UpdateMovementAndSleep()
         {
-            // Reset particles to initial positions
-            for (var i = 0; i < _particles.Count; i++)
+            // Only check every few frames for performance
+            _sleepCheckCounter++;
+            if (_sleepCheckCounter < 10) return; // Check every 10 frames
+            _sleepCheckCounter = 0;
+
+            var currentPosition = transform.position;
+            var currentCenterOfMass = CalculateCenterOfMass();
+
+            // Calculate movement speeds
+            var positionMovement = Vector3.Distance(currentPosition, _lastPosition);
+            var centerMovement = Vector3.Distance(currentCenterOfMass, _lastCenterOfMass);
+            _currentMovementSpeed =
+                Mathf.Max(positionMovement, centerMovement) / (Time.deltaTime * 10f); // Account for 10-frame skip
+
+            // Sleep detection
+            if (settings.enableSleepSystem)
             {
-                var p = _particles[i];
-                p.Velocity = Vector4.zero;
-                p.Force = Vector4.zero;
-                // Keep original position but reset physics state
-                _particles[i] = p;
+                UpdateSleepState();
             }
 
-            if (_particleBuffer != null)
-            {
-                _particleBuffer.SetData(_particles);
-            }
-
-            Debug.Log("Reset particles to initial state due to invalid data");
+            _lastPosition = currentPosition;
+            _lastCenterOfMass = currentCenterOfMass;
         }
+
+        private void UpdateSleepState()
+        {
+            if (_currentMovementSpeed < settings.sleepVelocityThreshold)
+            {
+                _sleepTimer += Time.deltaTime * 10f; // Account for frame skipping
+
+                if (_sleepTimer > settings.sleepTimeThreshold && !_isAsleep)
+                {
+                    GoToSleep();
+                }
+            }
+            else
+            {
+                _sleepTimer = 0f;
+                if (_isAsleep)
+                {
+                    WakeUp();
+                }
+            }
+        }
+
+        private bool ShouldApplyDampening()
+        {
+            return _currentMovementSpeed > settings.minMovementSpeed &&
+                   _currentMovementSpeed < settings.stillnessThreshold &&
+                   !_isAsleep;
+        }
+
+        private void ApplyMovementDampening()
+        {
+            if (_particleBuffer == null) return;
+
+            // Get current particle data
+            var currentParticles = new Particle[_particles.Count];
+            _particleBuffer.GetData(currentParticles);
+
+            // Apply dampening to velocities
+            for (var i = 0; i < currentParticles.Length; i++)
+            {
+                var p = currentParticles[i];
+                if (p.InvMass > 0) // Only dampen moveable particles
+                {
+                    p.Velocity.x *= settings.dampeningStrength;
+                    p.Velocity.y *= settings.dampeningStrength;
+                    p.Velocity.z *= settings.dampeningStrength;
+
+                    // Zero out very small velocities
+                    if (Mathf.Abs(p.Velocity.x) < settings.minMovementSpeed) p.Velocity.x = 0;
+                    if (Mathf.Abs(p.Velocity.y) < settings.minMovementSpeed) p.Velocity.y = 0;
+                    if (Mathf.Abs(p.Velocity.z) < settings.minMovementSpeed) p.Velocity.z = 0;
+
+                    currentParticles[i] = p;
+                }
+            }
+
+            // Upload modified particles back to GPU
+            _particleBuffer.SetData(currentParticles);
+        }
+
+        private void UpdateMovementTracking()
+        {
+            var wasMoving = _currentMovementSpeed > settings.stillnessThreshold;
+    
+            if (wasMoving != _wasPreviouslyMoving)
+            {
+                if (settings.showSleepState)
+                {
+                    Debug.Log($"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
+                }
+        
+                // Wake up nearby objects when this one starts moving significantly
+                if (wasMoving && _currentMovementSpeed > settings.sleepVelocityThreshold * 4f) // Only for significant movement
+                {
+                    WakeUpNearbyObjects();
+                }
+            }
+    
+            _wasPreviouslyMoving = wasMoving;
+        }
+
+        private void GoToSleep()
+        {
+            _isAsleep = true;
+            if (settings.showSleepState)
+            {
+                Debug.Log(
+                    $"{gameObject.name} went to sleep (speed: {_currentMovementSpeed:F4}, inactive for: {_sleepTimer:F1}s)");
+            }
+        }
+
+        public void WakeUp()
+        {
+            if (_isAsleep && settings.showSleepState)
+            {
+                Debug.Log($"{gameObject.name} woke up after {Time.time - _lastActiveTime:F1}s of sleep");
+            }
+
+            _isAsleep = false;
+            _sleepTimer = 0f;
+        }
+
+        private Vector3 CalculateCenterOfMass()
+        {
+            // Simple approximation using transform position
+            // For more accuracy, you could average particle positions
+            return transform.position;
+        }
+        
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (settings.enableSleepSystem && _isAsleep)
+            {
+                var impactForce = collision.relativeVelocity.magnitude;
+                if (impactForce > 0.5f) // Significant impact
+                {
+                    WakeUp();
+                    if (settings.showSleepState) Debug.Log($"{gameObject.name} woken by collision (force: {impactForce:F2})");
+                }
+            }
+        }
+        
+        private void WakeUpNearbyObjects(float radius = 0f)
+        {
+            if (!settings.enableProximityWake)
+            {
+                return;
+            }
+            if (Time.frameCount % settings.proximityCheckInterval != 0)
+            {
+                return;
+            }
+    
+            if (radius <= 0f) radius = settings.proximityWakeRadius;
+    
+            // Update static cache periodically
+            if (Time.time - _lastCacheUpdate > CacheUpdateInterval)
+            {
+                _allSoftBodies.Clear();
+                _allSoftBodies.AddRange(FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None));
+                _lastCacheUpdate = Time.time;
+            }
+    
+            var position = transform.position;
+            var radiusSq = radius * radius;
+    
+            // Check cached soft bodies
+            foreach (var body in _allSoftBodies)
+            {
+                if (body == null || body == this || !body.IsAsleep) continue;
+        
+                var distanceSq = Vector3.SqrMagnitude(position - body.transform.position);
+                if (distanceSq < radiusSq)
+                {
+                    body.WakeUp();
+                    if (settings.showSleepState)
+                    {
+                        Debug.Log($"{body.gameObject.name} woken by nearby movement from {gameObject.name}");
+                    }
+                }
+            }
+        }
+        
 
         private void OnDestroy()
         {
@@ -840,7 +1051,7 @@ namespace SoftBody.Scripts
 
             Debug.Log("CPU Data Validation PASSED. All constraint indices are within particle bounds.");
         }
-        
+
         public void SetParticleData(Particle[] inputArray)
         {
             if (_particleBuffer != null && inputArray.Length == _particles.Count)
@@ -848,6 +1059,7 @@ namespace SoftBody.Scripts
                 _particleBuffer.SetData(inputArray);
             }
         }
+
         public void GetParticleData(Particle[] outputArray)
         {
             if (_particleBuffer != null && outputArray.Length >= _particles.Count)
@@ -859,17 +1071,20 @@ namespace SoftBody.Scripts
         private float CalculateMemoryUsage()
         {
             var totalBytes = 0f;
-    
+
             if (_particleBuffer != null) totalBytes += _particleBuffer.count * _particleBuffer.stride;
             if (_constraintBuffer != null) totalBytes += _constraintBuffer.count * _constraintBuffer.stride;
             if (_vertexBuffer != null) totalBytes += _vertexBuffer.count * _vertexBuffer.stride;
             if (_indexBuffer != null) totalBytes += _indexBuffer.count * _indexBuffer.stride;
             if (_debugBuffer != null) totalBytes += _debugBuffer.count * _debugBuffer.stride;
-            if (_volumeConstraintBuffer != null) totalBytes += _volumeConstraintBuffer.count * _volumeConstraintBuffer.stride;
-            if (_previousPositionsBuffer != null) totalBytes += _previousPositionsBuffer.count * _previousPositionsBuffer.stride;
+            if (_volumeConstraintBuffer != null)
+                totalBytes += _volumeConstraintBuffer.count * _volumeConstraintBuffer.stride;
+            if (_previousPositionsBuffer != null)
+                totalBytes += _previousPositionsBuffer.count * _previousPositionsBuffer.stride;
             if (_colliderBuffer != null) totalBytes += _colliderBuffer.count * _colliderBuffer.stride;
-            if (_collisionCorrectionsBuffer != null) totalBytes += _collisionCorrectionsBuffer.count * _collisionCorrectionsBuffer.stride;
-    
+            if (_collisionCorrectionsBuffer != null)
+                totalBytes += _collisionCorrectionsBuffer.count * _collisionCorrectionsBuffer.stride;
+
             return totalBytes / (1024f * 1024f); // Convert to MB
         }
 
@@ -884,21 +1099,21 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Cannot reset - initial state not stored or buffers not initialized");
                 return;
             }
-    
+
             // Reset particles to initial positions and clear velocities
             var resetParticles = new List<Particle>();
             foreach (var particle in _initialParticles)
             {
                 var p = particle;
-                p.Velocity = Vector4.zero;  // Clear velocity
-                p.Force = Vector4.zero;     // Clear forces
+                p.Velocity = Vector4.zero; // Clear velocity
+                p.Force = Vector4.zero; // Clear forces
                 resetParticles.Add(p);
             }
-    
+
             // Update the lists and buffers
             _particles = resetParticles;
             _particleBuffer.SetData(_particles);
-    
+
             // Reset constraint lambdas
             for (var i = 0; i < _constraints.Count; i++)
             {
@@ -906,8 +1121,9 @@ namespace SoftBody.Scripts
                 c.Lambda = 0f;
                 _constraints[i] = c;
             }
+
             _constraintBuffer.SetData(_constraints);
-    
+
             // Reset volume constraint lambdas
             for (var i = 0; i < _volumeConstraints.Count; i++)
             {
@@ -915,18 +1131,19 @@ namespace SoftBody.Scripts
                 vc.Lambda = 0f;
                 _volumeConstraints[i] = vc;
             }
+
             _volumeConstraintBuffer.SetData(_volumeConstraints);
-    
+
             Debug.Log("Soft body reset to initial state");
         }
-        
+
         public void ResetVelocities()
         {
             if (_particleBuffer == null) return;
-    
+
             var currentParticles = new Particle[_particles.Count];
             _particleBuffer.GetData(currentParticles);
-    
+
             for (var i = 0; i < currentParticles.Length; i++)
             {
                 var p = currentParticles[i];
@@ -934,11 +1151,11 @@ namespace SoftBody.Scripts
                 p.Force = Vector4.zero;
                 currentParticles[i] = p;
             }
-    
+
             _particleBuffer.SetData(currentParticles);
             Debug.Log("Velocities reset");
         }
-        
+
         public void PokeAtPosition(Vector3 worldPosition, Vector3 impulse, float radius = 1f)
         {
             if (_particles == null || _particles.Count == 0 || _particleBuffer == null)
@@ -946,6 +1163,8 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Cannot poke, physics system not initialized.");
                 return;
             }
+            
+            WakeUp();
 
             // Get current particle data
             var currentParticles = new Particle[_particles.Count];
@@ -991,14 +1210,15 @@ namespace SoftBody.Scripts
         public void ApplyContinuousForce(Vector3 worldPosition, Vector3 force, float radius = 1f)
         {
             if (_particles == null || _particleBuffer == null) return;
-    
+
+            WakeUp();
             // Use a more efficient approach - only read/write affected particles
             var currentParticles = new Particle[_particles.Count];
             _particleBuffer.GetData(currentParticles);
-    
+
             var radiusSq = radius * radius;
             var modifiedIndices = new List<int>();
-    
+
             for (var i = 0; i < currentParticles.Length; i++)
             {
                 var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - worldPosition);
@@ -1007,18 +1227,18 @@ namespace SoftBody.Scripts
                     var p = currentParticles[i];
                     var distance = Mathf.Sqrt(distSq);
                     var falloff = 1f - (distance / radius);
-            
+
                     // Apply force as velocity change (more responsive)
                     var deltaVelocity = force * (falloff * p.InvMass * Time.deltaTime);
                     p.Velocity.x += deltaVelocity.x;
                     p.Velocity.y += deltaVelocity.y;
                     p.Velocity.z += deltaVelocity.z;
-            
+
                     currentParticles[i] = p;
                     modifiedIndices.Add(i);
                 }
             }
-    
+
             if (modifiedIndices.Count > 0)
             {
                 _particleBuffer.SetData(currentParticles);

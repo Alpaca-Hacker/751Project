@@ -58,8 +58,24 @@ namespace SoftBody.Scripts
         public bool enableConstraintFiltering = true;
         public int maxConstraintsPerParticle = 10; 
         public float maxConstraintLength = 0.12f;    
-        public float structuralLengthThreshold = 0.08f; 
-        public int minConstraintsPerParticle = 4;    
+    
+        [Header("Sleep & Movement System")]
+        public bool enableSleepSystem = true;
+        public float sleepVelocityThreshold = 0.005f;
+        public float sleepTimeThreshold = 1f;
+        public float wakeDistanceThreshold = 0.1f;
+        public bool showSleepState = false;
+        
+        [Header("Proximity Wake System")]
+        public bool enableProximityWake = true;
+        public float proximityWakeRadius = 3f;
+        public int proximityCheckInterval = 60;
+
+        [Header("Movement Dampening")]
+        public bool enableMovementDampening = true;
+        public float stillnessThreshold = 0.01f;     // When to start dampening
+        public float dampeningStrength = 0.95f;      // How aggressive (0.9 = 10% reduction per frame)
+        public float minMovementSpeed = 0.001f;      // Stop dampening below this speed
         
         [Header("Collision")]
         public Transform floorTransform;
