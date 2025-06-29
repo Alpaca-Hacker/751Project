@@ -9,7 +9,7 @@ namespace SoftBody.Scripts
 {
     public class SoftBodyPhysics : MonoBehaviour
     {
-        [SerializeField] private SoftBodySettings settings = new();
+        [SerializeField] public SoftBodySettings settings = new();
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
 
