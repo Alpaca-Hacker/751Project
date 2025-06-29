@@ -14,6 +14,7 @@ namespace SoftBody.Scripts
         [SerializeField] private Material renderMaterial;
 
         public int ParticleCount => _particles?.Count ?? 0;
+        public int ConstraintCount => _constraints?.Count ?? 0;
 
         private ComputeBuffer _particleBuffer;
         private ComputeBuffer _constraintBuffer;
@@ -128,6 +129,7 @@ namespace SoftBody.Scripts
 
             try
             {
+                
                 List<Cluster> clusters;
                 switch (settings.graphColouringMethod)
                 {
@@ -243,7 +245,7 @@ namespace SoftBody.Scripts
     
                 // Create expanded UV array if needed
                 var expandedUVs = new Vector2[_particles.Count];
-                int copyCount = Mathf.Min(_weldedUVs.Length, _particles.Count);
+                var copyCount = Mathf.Min(_weldedUVs.Length, _particles.Count);
                 System.Array.Copy(_weldedUVs, expandedUVs, copyCount);
                 _mesh.uv = expandedUVs;
             }
@@ -364,11 +366,34 @@ namespace SoftBody.Scripts
             }
 
             BindBuffers();
-
-            // Integrate particles
+            
             var constraintThreadGroups = Mathf.CeilToInt(_constraints.Count / 64f);
             var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
             var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
+    
+            // // Calculate actual thread utilization
+            // var actualConstraintThreads = constraintThreadGroups * 64;
+            // var actualParticleThreads = particleThreadGroups * 64;
+            // var actualVolumeThreads = volumeConstraintThreadGroups * 64;
+            //
+            // var constraintUtilization = _constraints.Count / (float)actualConstraintThreads * 100f;
+            // var particleUtilization = _particles.Count / (float)actualParticleThreads * 100f;
+            // var volumeUtilization = _volumeConstraints.Count > 0 ? _volumeConstraints.Count / (float)actualVolumeThreads * 100f : 0f;
+    
+            // Log every 60 frames
+            // if (Time.frameCount % 60 == 0)
+            // {
+            //     Debug.Log($"THREAD EFFICIENCY REPORT:");
+            //     Debug.Log($"  Particles: {_particles.Count} actual, {actualParticleThreads} dispatched ({particleUtilization:F1}% efficient)");
+            //     Debug.Log($"  Constraints: {_constraints.Count} actual, {actualConstraintThreads} dispatched ({constraintUtilization:F1}% efficient)");
+            //     Debug.Log($"  Volume: {_volumeConstraints.Count} actual, {actualVolumeThreads} dispatched ({volumeUtilization:F1}% efficient)");
+            //     Debug.Log($"  Thread Groups: P={particleThreadGroups}, C={constraintThreadGroups}, V={volumeConstraintThreadGroups}");
+            // }
+
+            // Integrate particles
+            // var constraintThreadGroups = Mathf.CeilToInt(_constraints.Count / 64f);
+            // var particleThreadGroups = Mathf.CeilToInt(_particles.Count / 64f);
+            // var volumeConstraintThreadGroups = Mathf.CeilToInt(_volumeConstraints.Count / 64f);
 
             // === LAMBDA DECAY ===
             SoftBodyProfiler.BeginSample("LambdaDecay");
@@ -398,9 +423,9 @@ namespace SoftBody.Scripts
             SoftBodyProfiler.BeginSample("ConstraintSolving");
 
             // Timing accumulators for detailed metrics
-            float totalConstraintTime = 0f;
-            float totalVolumeTime = 0f;
-            float totalCollisionTime = 0f;
+            var totalConstraintTime = 0f;
+            var totalVolumeTime = 0f;
+            var totalCollisionTime = 0f;
 
           
             for (var iter = 0; iter < settings.solverIterations; iter++)

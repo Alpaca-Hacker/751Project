@@ -5188,6 +5188,11 @@ MonoBehaviour:
     shearCompliance: 0.00005
     bendCompliance: 0.0001
     volumeCompliance: 0.001
+    enableConstraintFiltering: 1
+    maxConstraintsPerParticle: 10
+    maxConstraintLength: 0.12
+    structuralLengthThreshold: 0.08
+    minConstraintsPerParticle: 4
     floorTransform: {fileID: 192215456}
     enableCollision: 1
     collisionLayers:

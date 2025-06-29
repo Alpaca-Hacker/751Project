@@ -21,9 +21,17 @@ namespace SoftBody.Scripts
         public Slider spawnRateSlider;
         public TMP_Text spawnRateText;
 
-        [Header("Performance Tracking")] public bool enablePerformanceLogging = true;
+        [Header("Performance Tracking")] 
+        public bool enablePerformanceLogging = true;
         public float logInterval = 5f;
 
+        [Header("Performance Diagnostics")]
+        public bool enableDetailedProfiling = true;
+        public TMP_Text gpuTimeText;
+        public TMP_Text constraintEfficiencyText;
+        public TMP_Text threadGroupUtilizationText;
+        
+        
         private SoftBodySpawner _spawner;
         private readonly List<SoftBodyPhysics> _allSoftBodies = new();
         private float _lastLogTime;
@@ -129,6 +137,11 @@ namespace SoftBody.Scripts
 
             // Update soft body metrics
             UpdateSoftBodyMetrics();
+            
+            if (enableDetailedProfiling)
+            {
+                UpdateDetailedDiagnostics();
+            } 
         }
 
         private void UpdateSoftBodyMetrics()
@@ -147,7 +160,7 @@ namespace SoftBody.Scripts
                 {
                     totalParticles += softBody.ParticleCount;
                     // You might need to add a public property for constraint count
-                    // totalConstraints += softBody.ConstraintCount;
+                     totalConstraints += softBody.ConstraintCount;
 
                     // Estimate memory usage (rough calculation)
                     totalMemory += softBody.ParticleCount * 64f / (1024f * 1024f); // ~64 bytes per particle
@@ -167,6 +180,50 @@ namespace SoftBody.Scripts
             if (memoryUsageText != null)
             {
                 memoryUsageText.text = $"{totalMemory:F1} MB";
+            }
+        }
+
+        private void UpdateDetailedDiagnostics()
+        {
+            var allSoftBodies = FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
+
+            var totalParticles = 0;
+            var totalConstraints = 0;
+            var activeObjects = 0;
+
+            foreach (var softBody in allSoftBodies)
+            {
+                if (softBody.enabled && softBody.gameObject.activeInHierarchy)
+                {
+                    totalParticles += softBody.ParticleCount;
+                    // You'll need to expose constraint count
+                    activeObjects++;
+                }
+            }
+
+            // Calculate thread group efficiency
+            var threadGroupSize = 64f;
+            var particleThreadGroups = Mathf.CeilToInt(totalParticles / threadGroupSize);
+            var particleUtilization = totalParticles / (particleThreadGroups * threadGroupSize) * 100f;
+
+            if (threadGroupUtilizationText != null)
+            {
+                threadGroupUtilizationText.text = $"{particleUtilization:F1}%";
+
+                // Colour code efficiency
+                if (particleUtilization >= 80f)
+                    threadGroupUtilizationText.color = Color.green;
+                else if (particleUtilization >= 60f)
+                    threadGroupUtilizationText.color = Color.yellow;
+                else
+                    threadGroupUtilizationText.color = Color.red;
+            }
+
+            // Estimate constraints per particle ratio
+            if (constraintEfficiencyText != null && totalParticles > 0)
+            {
+                var constraintRatio = (float)totalConstraints / totalParticles;
+                constraintEfficiencyText.text = $"{constraintRatio:F1}";
             }
         }
 

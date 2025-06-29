@@ -54,6 +54,13 @@ namespace SoftBody.Scripts
         public float bendCompliance = 0.01f; 
         public float volumeCompliance= 0.0001f;
         
+        [Header("Constraint Optimization")]
+        public bool enableConstraintFiltering = true;
+        public int maxConstraintsPerParticle = 10; 
+        public float maxConstraintLength = 0.12f;    
+        public float structuralLengthThreshold = 0.08f; 
+        public int minConstraintsPerParticle = 4;    
+        
         [Header("Collision")]
         public Transform floorTransform;
     
@@ -65,7 +72,6 @@ namespace SoftBody.Scripts
         public bool useCPUFallback = false;
         public bool debugMode;
         public GraphColouringMethod graphColouringMethod = GraphColouringMethod.None;
-       
 
 
         public void LogSettings()
