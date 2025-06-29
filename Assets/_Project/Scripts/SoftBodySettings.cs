@@ -64,7 +64,7 @@ namespace SoftBody.Scripts
         [Header("Debug Options")]
         public bool useCPUFallback = false;
         public bool debugMode;
-        public GraphColouringMethod GraphColouringMethod = GraphColouringMethod.None;
+        public GraphColouringMethod graphColouringMethod = GraphColouringMethod.None;
        
 
 
@@ -79,7 +79,19 @@ namespace SoftBody.Scripts
                       $"EnableCollision={enableCollision}," +
                       $"StructuralCompliance={structuralCompliance}," +
                       $"ShearCompliance={shearCompliance}," +
-                      $"BendCompliance={bendCompliance}");
+                      $"BendCompliance={bendCompliance}, " +
+                      $"VolumeCompliance={volumeCompliance}, " +
+                      $"StuffingDensity={stuffingDensity}, " +
+                      $"PressureResistance={pressureResistance}, " +
+                      $"SkinFlexibility={skinFlexibility}, " +
+                      $"StuffingStiffness={stuffingStiffness}, " +
+                      $"MaxStuffingParticles={maxStuffingParticles}, " +
+                      $"MaxStuffingConstraints={maxStuffingConstraints}, " +
+                      $"MaxSkinConstraints={maxSkinConstraints}, " +
+                      $"MaxVolumeConstraints={maxVolumeConstraints}, " +
+                      $"MaxAdditionalConstraints={maxAdditionalConstraints}, " +
+                      $"EnablePerformanceLimits={enablePerformanceLimits}, " +
+                      $"GraphColouringMethod={graphColouringMethod}");
         }
         
         public enum ConnectivityMethod

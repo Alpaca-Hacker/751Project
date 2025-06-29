@@ -5160,7 +5160,7 @@ MonoBehaviour:
     useProceduralCube: 0
     useTetrahedralizationForHighPoly: 1
     maxSurfaceVerticesBeforeTetra: 100
-    interiorPointDensity: 0.8
+    interiorPointDensity: 2
     size: {x: 1, y: 1, z: 1}
     resolution: 4
     preserveUVs: 1
@@ -5172,11 +5172,22 @@ MonoBehaviour:
     damping: 0.03
     gravity: 1
     lambdaDecay: 0
-    solverIterations: 25
+    solverIterations: 5
+    enableStuffingMode: 1
+    stuffingDensity: 0.5
+    pressureResistance: 1.5
+    skinFlexibility: 2
+    stuffingStiffness: 0.1
+    maxStuffingParticles: 30
+    maxStuffingConstraints: 200
+    maxSkinConstraints: 150
+    maxVolumeConstraints: 100
+    maxAdditionalConstraints: 500
+    enablePerformanceLimits: 1
     structuralCompliance: 0.0000001
     shearCompliance: 0.00005
     bendCompliance: 0.0001
-    volumeCompliance: 0.00001
+    volumeCompliance: 0.001
     floorTransform: {fileID: 192215456}
     enableCollision: 1
     collisionLayers:
@@ -5184,7 +5195,7 @@ MonoBehaviour:
       m_Bits: 4294967295
     useCPUFallback: 0
     debugMode: 0
-    GraphColouringMethod: 2
+    graphColouringMethod: 2
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
 --- !u!23 &1347859663

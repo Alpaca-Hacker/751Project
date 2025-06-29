@@ -124,7 +124,7 @@ namespace SoftBody.Scripts
             try
             {
                 List<Cluster> clusters;
-                switch (settings.GraphColouringMethod)
+                switch (settings.graphColouringMethod)
                 {
                     case GraphColouringMethod.Naive:
                     {
@@ -162,7 +162,7 @@ namespace SoftBody.Scripts
                         break;
                     }
                     default:
-                        Debug.LogError($"Unknown graph colouring method: {settings.GraphColouringMethod}");
+                        Debug.LogError($"Unknown graph colouring method: {settings.graphColouringMethod}");
                         break;
                 }
 
@@ -235,6 +235,12 @@ namespace SoftBody.Scripts
             else if (_weldedUVs != null)
             {
                 Debug.LogWarning($"UV count mismatch: {_weldedUVs.Length} UVs vs {_particles.Count} particles");
+    
+                // Create expanded UV array if needed
+                var expandedUVs = new Vector2[_particles.Count];
+                int copyCount = Mathf.Min(_weldedUVs.Length, _particles.Count);
+                System.Array.Copy(_weldedUVs, expandedUVs, copyCount);
+                _mesh.uv = expandedUVs;
             }
 
             _mesh.RecalculateNormals();
