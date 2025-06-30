@@ -103,7 +103,7 @@ namespace SoftBody.Scripts
             catch (System.Exception e)
             {
                 Debug.LogError($"Initialization failed: {e.Message}\n{e.StackTrace}");
-                settings.useCPUFallback = true;
+                settings.SkipUpdate = true;
             }
         }
 
@@ -208,14 +208,14 @@ namespace SoftBody.Scripts
             if (_particles == null || _particles.Count == 0)
             {
                 Debug.LogError("No particles generated! Check mesh input.");
-                settings.useCPUFallback = true;
+                settings.SkipUpdate = true;
                 return;
             }
 
             if (_constraints == null || _constraints.Count == 0)
             {
                 Debug.LogError("No constraints generated! Check mesh topology.");
-                settings.useCPUFallback = true;
+                settings.SkipUpdate = true;
                 return;
             }
 
@@ -329,9 +329,8 @@ namespace SoftBody.Scripts
 
         private void Update()
         {
-            if (settings.useCPUFallback)
+            if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
             {
-                //  UpdateCPU();
                 return;
             }
 
@@ -344,6 +343,12 @@ namespace SoftBody.Scripts
             if (_particleBuffer == null)
             {
                 Debug.LogError("Particle buffer not initialized!");
+                return;
+            }
+            
+            if (!ValidateBuffers())
+            {
+                Debug.LogWarning($"SoftBody '{gameObject.name}' has invalid buffers, skipping frame");
                 return;
             }
 
@@ -391,8 +396,22 @@ namespace SoftBody.Scripts
             UpdateMovementTracking();
         }
 
+        private bool ValidateBuffers()
+        {
+            return _particleBuffer != null && 
+                   _constraintBuffer != null && 
+                   _vertexBuffer != null && 
+                   _particles != null && 
+                   _particles.Count > 0;
+        }
+
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
         {
+            if (!ValidateBuffers())
+            {
+                Debug.LogWarning("Skipping substep due to invalid buffers");
+                return;
+            }
             // Start overall frame timing
             var frameTimer = System.Diagnostics.Stopwatch.StartNew();
             var stepTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -688,8 +707,8 @@ namespace SoftBody.Scripts
 
                     if (_readbackRequest.hasError)
                     {
-                        Debug.LogError("AsyncGPUReadback failed! Switching to CPU mode.");
-                        settings.useCPUFallback = true;
+                        Debug.LogWarning("AsyncGPUReadback failed! Skipping frame.");
+                        
                         return;
                     }
 
@@ -726,7 +745,6 @@ namespace SoftBody.Scripts
                     float.IsInfinity(worldPos.x) || float.IsInfinity(worldPos.y) || float.IsInfinity(worldPos.z))
                 {
                     Debug.LogWarning($"Invalid GPU data at particle {i}: {worldPos}");
-                    settings.useCPUFallback = true;
                     return;
                 }
 
@@ -766,6 +784,7 @@ namespace SoftBody.Scripts
             catch (System.Exception e)
             {
                 Debug.LogError($"Failed to update mesh: {e.Message}");
+                _isReadbackPending = false;
             }
         }
 
@@ -998,7 +1017,7 @@ namespace SoftBody.Scripts
             // Regenerate mesh when settings change in editor
             if (Application.isPlaying && _particles != null)
             {
-
+            
                 ReleaseBuffers();
                 SetupBuffers();
                 ResetToInitialState();
@@ -1023,7 +1042,7 @@ namespace SoftBody.Scripts
                 {
                     Debug.LogError(
                         $"CRITICAL ERROR IN CONSTRAINT DATA! Constraint at index {i} has invalid particle indices: A={c.ParticleA}, B={c.ParticleB}. Particle count is {particleCount}. THIS WILL CAUSE A GPU CRASH.");
-                    settings.useCPUFallback = true; // Halt simulation
+                    settings.SkipUpdate = true; // Halt simulation
                     return;
                 }
 
@@ -1044,7 +1063,7 @@ namespace SoftBody.Scripts
                 {
                     Debug.LogError(
                         $"CRITICAL ERROR IN VOLUME CONSTRAINT DATA! VolumeConstraint at index {i} has invalid particle indices. P1={vc.P1}, P2={vc.P2}, P3={vc.P3}, P4={vc.P4}. THIS WILL CAUSE A GPU CRASH.");
-                    settings.useCPUFallback = true; // Halt simulation
+                    settings.SkipUpdate = true; // Halt simulation
                     return;
                 }
             }

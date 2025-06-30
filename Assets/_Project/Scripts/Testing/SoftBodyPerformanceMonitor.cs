@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using SoftBody.Scripts.Pooling;
+using SoftBody.Scripts.Spawning;
 using TMPro;
 
 namespace SoftBody.Scripts
@@ -23,6 +25,9 @@ namespace SoftBody.Scripts
         public TMP_Text sleepCountText;
         public TMP_Text sleepEfficiencyText;
         public TMP_Text movementStatsText;
+        [Header("Pool Monitoring")]
+        public TMP_Text poolEfficiencyText;
+        public TMP_Text poolStatsText;
 
         [Header("Performance Tracking")] 
         public bool enablePerformanceLogging = true;
@@ -34,9 +39,15 @@ namespace SoftBody.Scripts
         public TMP_Text constraintEfficiencyText;
         public TMP_Text threadGroupUtilizationText;
         
+        [Header("Spawner References")]
+        public SoftBodySpawner softBodySpawner;
+
+        private SoftBodyPool[] _softBodyPools;
+        
         
         private SoftBodySpawner _spawner;
         private readonly List<SoftBodyPhysics> _allSoftBodies = new();
+        private GenericObjectPool[] _allPools;
         private float _lastLogTime;
         private float _frameRate;
         private int _frameCount;
@@ -44,8 +55,7 @@ namespace SoftBody.Scripts
 
         private void Start()
         {
-            _spawner = FindFirstObjectByType<SoftBodySpawner>();
-
+           _spawner = FindFirstObjectByType<SoftBodySpawner>();
             if (_spawner == null)
             {
                 Debug.LogError("SoftBodyPerformanceMonitor: No SoftBodySpawner found in scene!");
@@ -53,7 +63,10 @@ namespace SoftBody.Scripts
             }
 
             SetupUI();
-            _spawner.OnObjectCountChanged += UpdateObjectCount;
+            //_spawner.OnObjectSpawned += UpdateObjectCount;
+           
+            _allPools = FindObjectsByType<GenericObjectPool>(FindObjectsSortMode.None);
+            _softBodyPools = FindObjectsByType<SoftBodyPool>(FindObjectsSortMode.None);
 
             InvokeRepeating(nameof(UpdatePerformanceMetrics), 0f, 0.1f);
         }
@@ -67,7 +80,7 @@ namespace SoftBody.Scripts
 
             if (clearButton != null)
             {
-                clearButton.onClick.AddListener(() => _spawner.ClearAllObjects());
+                clearButton.onClick.AddListener(() => _spawner.ReturnAllObjects());
             }
 
             if (toggleAutoSpawnButton != null)
@@ -78,7 +91,7 @@ namespace SoftBody.Scripts
 
             if (spawnRateSlider != null)
             {
-                spawnRateSlider.value = _spawner.spawnRate;
+                spawnRateSlider.value = _spawner.spawnInterval;
                 spawnRateSlider.onValueChanged.AddListener(OnSpawnRateChanged);
             }
 
@@ -99,7 +112,7 @@ namespace SoftBody.Scripts
 
             if (_frameRate > 100)
             {
-                _spawnTimer++;
+               // _spawnTimer++;
                 if (_spawnTimer >= 50) // Log every 10 frames
                 {
                     _spawner.SpawnObject();
@@ -121,8 +134,9 @@ namespace SoftBody.Scripts
             }
         }
 
-        private void UpdateObjectCount(int count)
+        private void UpdateObjectCount(GameObject obj)
         {
+            var count = _spawner.ActiveObjectCount;
             if (objectCountText != null)
             {
                 objectCountText.text = $"{count}";
@@ -130,7 +144,7 @@ namespace SoftBody.Scripts
 
             if (totalSpawnedText != null)
             {
-                totalSpawnedText.text = $"{_spawner.TotalObjectsSpawned}";
+                totalSpawnedText.text = $"{_spawner.TotalObjectCount}";
             }
         }
 
@@ -159,6 +173,7 @@ namespace SoftBody.Scripts
             } 
             
             UpdateSleepSystemMetrics();
+            UpdatePoolMetrics();
         }
 
         private void UpdateSoftBodyMetrics()
@@ -182,6 +197,16 @@ namespace SoftBody.Scripts
                     // Estimate memory usage (rough calculation)
                     totalMemory += softBody.ParticleCount * 64f / (1024f * 1024f); // ~64 bytes per particle
                 }
+            }
+            
+            if (objectCountText != null && softBodySpawner != null)
+            {
+                objectCountText.text = $"{softBodySpawner.ActiveObjectCount}";
+            }
+    
+            if (totalSpawnedText != null && softBodySpawner != null)
+            {
+                totalSpawnedText.text = $"{softBodySpawner.TotalObjectCount}";
             }
 
             if (totalParticlesText != null)
@@ -301,18 +326,58 @@ namespace SoftBody.Scripts
                     $"Active Objects: {activeObjects}/{allSoftBodies.Length} ({computationSaved:F0}% computation saved)";
             }
         }
+        
+        private void UpdatePoolMetrics()
+        {
+            if (_softBodyPools == null || _softBodyPools.Length == 0) return;
+    
+            var totalActive = 0;
+            var totalAvailable = 0;
+            var totalCapacity = 0;
+    
+            foreach (var pool in _softBodyPools)
+            {
+                if (pool != null)
+                {
+                    totalActive += pool.ActiveCount;
+                    totalAvailable += pool.AvailableCount;
+                    totalCapacity += pool.TotalCount;
+                }
+            }
+    
+            if (poolStatsText != null)
+            {
+                poolStatsText.text = $"Pool: Active:{totalActive} Available:{totalAvailable} Total:{totalCapacity}";
+            }
+    
+            if (poolEfficiencyText != null && totalCapacity > 0)
+            {
+                var efficiency = (float)totalAvailable / totalCapacity * 100f;
+                poolEfficiencyText.text = $"{efficiency:F1}%";
+        
+                // Colour code efficiency
+                if (efficiency >= 60f)
+                    poolEfficiencyText.color = Color.green;
+                else if (efficiency >= 30f)
+                    poolEfficiencyText.color = Color.yellow;
+                else
+                    poolEfficiencyText.color = Color.red;
+            }
+        }
+        
+        private bool _autoSpawnEnabled = false;
 
         private void ToggleAutoSpawn()
         {
-            _spawner.autoSpawn = !_spawner.autoSpawn;
+            _autoSpawnEnabled= !_autoSpawnEnabled;
 
-            if (_spawner.autoSpawn)
+            if (_autoSpawnEnabled)
             {
-                _spawner.StartAutoSpawn();
+                _spawner.StartSpawning();
             }
             else
             {
-                _spawner.StopAutoSpawn();
+                _spawner.StopSpawning();
             }
 
             UpdateAutoSpawnButtonText();
@@ -325,14 +390,14 @@ namespace SoftBody.Scripts
                 var text = toggleAutoSpawnButton.GetComponentInChildren<Text>();
                 if (text != null)
                 {
-                    text.text = _spawner.autoSpawn ? "Stop Auto Spawn" : "Start Auto Spawn";
+                    text.text = _autoSpawnEnabled ? "Stop Auto Spawn" : "Start Auto Spawn";
                 }
             }
         }
 
         private void OnSpawnRateChanged(float value)
         {
-            _spawner.spawnRate = value;
+            _spawner.spawnInterval = value;
             UpdateSpawnRateText();
         }
 
@@ -346,7 +411,7 @@ namespace SoftBody.Scripts
 
         private void LogPerformanceMetrics()
         {
-            Debug.Log($"PERFORMANCE LOG - Objects: {_spawner.CurrentObjectCount}, " +
+            Debug.Log($"PERFORMANCE LOG - Objects: {_spawner.ActiveObjectCount}, " +
                       $"FPS: {_frameRate:F1}, " +
                       $"Total Particles: {GetTotalParticles():N0}, " +
                       $"Memory: {GetEstimatedMemoryUsage():F1}MB");
@@ -379,13 +444,6 @@ namespace SoftBody.Scripts
 
             return total;
         }
-
-        private void OnDestroy()
-        {
-            if (_spawner != null)
-            {
-                _spawner.OnObjectCountChanged -= UpdateObjectCount;
-            }
-        }
+        
     }
 }

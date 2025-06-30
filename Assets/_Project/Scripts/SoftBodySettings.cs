@@ -85,7 +85,7 @@ namespace SoftBody.Scripts
         public LayerMask collisionLayers = -1;
         
         [Header("Debug Options")]
-        public bool useCPUFallback = false;
+        public bool SkipUpdate = false;
         public bool debugMode;
         public GraphColouringMethod graphColouringMethod = GraphColouringMethod.None;
 

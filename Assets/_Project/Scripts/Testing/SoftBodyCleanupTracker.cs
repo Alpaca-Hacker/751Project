@@ -15,7 +15,7 @@ namespace SoftBody.Scripts
         {
             if (_spawner != null)
             {
-                _spawner.RemoveObject(gameObject);
+               // _spawner.RemoveObject(gameObject);
             }
         }
     }
