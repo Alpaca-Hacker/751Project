@@ -6,17 +6,21 @@
 #pragma kernel UpdateVelocities
 #pragma kernel DebugAndValidateParticles
 #pragma kernel SolveGeneralCollisions
+#pragma kernel ApplyCollisionCorrections
 
 #pragma target 4.5
 #pragma float_precision(high)
 
 #define COLLIDER_TYPE_SPHERE 0
 #define COLLIDER_TYPE_PLANE 1
+#define COLLIDER_TYPE_BOX 2
+#define COLLIDER_TYPE_CYLINDER 3
 
 struct SDFCollider
 {
     float4 data1;
     float4 data2;
+    float4 rotation;
     int type;
     int _padding1, _padding2, _padding3;
 };
@@ -130,6 +134,50 @@ float sdf_plane(float3 p, float3 normal, float distance)
     // distance is the plane's distance from the origin along its normal
     return dot(p, normal) - distance;
 }
+
+float4 quaternion_conjugate(float4 q)
+{
+    return float4(-q.x, -q.y, -q.z, q.w);
+}
+
+float4 quaternion_multiply(float4 q1, float4 q2)
+{
+    return float4(
+        q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y,
+        q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x,
+        q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w,
+        q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z
+    );
+}
+
+float3 rotate_vector_by_quaternion(float3 v, float4 q)
+{
+    float4 q_conj = quaternion_conjugate(q);
+    float4 qv = float4(v, 0);
+    float4 result = quaternion_multiply(quaternion_multiply(q, qv), q_conj);
+    return result.xyz;
+}
+
+// Box SDF with rotation
+float sdf_box_rotated(float3 p, float3 center, float3 halfExtents, float4 rotation)
+{
+    // Transform point to box's local space
+    float3 localP = rotate_vector_by_quaternion(p - center, quaternion_conjugate(rotation));
+    float3 d = abs(localP) - halfExtents;
+    float outsideDist = length(max(d, 0.0));
+    float insideDist = min(max(d.x, max(d.y, d.z)), 0.0);
+    return outsideDist + insideDist;
+}
+
+// Cylinder SDF with rotation (Y-axis aligned in local space)
+float sdf_cylinder_rotated(float3 p, float3 center, float radius, float halfHeight, float4 rotation)
+{
+    // Transform point to cylinder's local space
+    float3 localP = rotate_vector_by_quaternion(p - center, quaternion_conjugate(rotation));
+    float2 d = float2(length(localP.xz) - radius, abs(localP.y) - halfHeight);
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
 
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
@@ -451,7 +499,7 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
     Particle p = particles[p_idx];
     if (p.positionAndInvMass.w <= 0.0) return;
     
-    // IMPORTANT: Clear the correction from the previous iteration/frame
+    // Clear the correction from the previous iteration
     collisionCorrections[p_idx] = float3(0,0,0);
     int numCollisions = 0;
 
@@ -483,14 +531,64 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
                 normal = plane_normal;
             }
         }
+        else if (c.type == COLLIDER_TYPE_BOX)
+        {
+            float3 box_center = c.data1.xyz;
+            float3 box_halfExtents = c.data2.xyz;
+            float4 box_rotation = c.rotation;
+            
+            penetration = sdf_box_rotated(pos, box_center, box_halfExtents, box_rotation);
+            
+            if (penetration < 0)
+            {
+                // Calculate normal by finding closest point on box surface
+                float3 localP = rotate_vector_by_quaternion(pos - box_center, quaternion_conjugate(box_rotation));
+                float3 closestPoint = clamp(localP, -box_halfExtents, box_halfExtents);
+                float3 localNormal = SafeNormalize(localP - closestPoint);
+                normal = rotate_vector_by_quaternion(localNormal, box_rotation);
+            }
+        }
+        else if (c.type == COLLIDER_TYPE_CYLINDER)
+        {
+            float3 cyl_center = c.data1.xyz;
+            float cyl_radius = c.data2.x;
+            float cyl_halfHeight = c.data2.y;
+            float4 cyl_rotation = c.rotation;
+            
+            penetration = sdf_cylinder_rotated(pos, cyl_center, cyl_radius, cyl_halfHeight, cyl_rotation);
+            
+            if (penetration < 0)
+            {
+                // Calculate normal based on closest feature
+                float3 localP = rotate_vector_by_quaternion(pos - cyl_center, quaternion_conjugate(cyl_rotation));
+                float heightDist = abs(localP.y) - cyl_halfHeight;
+                float radialDist = length(localP.xz) - cyl_radius;
+                
+                float3 localNormal;
+                if (heightDist > radialDist)
+                {
+                    // Closest to top/bottom cap
+                    localNormal = float3(0, sign(localP.y), 0);
+                }
+                else
+                {
+                    // Closest to cylindrical surface
+                    float2 radialDir = normalize(localP.xz);
+                    localNormal = float3(radialDir.x, 0, radialDir.y);
+                }
+                
+                normal = rotate_vector_by_quaternion(localNormal, cyl_rotation);
+            }
+        }
 
         if (penetration < 0)
         {
             // We have a collision. Calculate the positional correction needed.
-            // For multiple penetrating colliders, we want to average the correction.
+            // Add a small margin to prevent tunneling
+            float correctionMagnitude = -penetration + 0.001f;
             
-            // The correction is simply the negative penetration depth along the normal.
-            collisionCorrections[p_idx] -= penetration * normal;
+            // Accumulate corrections
+            collisionCorrections[p_idx] += normal * correctionMagnitude;
             numCollisions++;
         }
     }
@@ -501,8 +599,6 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
         collisionCorrections[p_idx] /= numCollisions;
     }
 }
-
-#pragma kernel ApplyCollisionCorrections
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)

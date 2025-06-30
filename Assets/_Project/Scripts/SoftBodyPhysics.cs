@@ -645,46 +645,96 @@ namespace SoftBody.Scripts
         {
             _colliders.Clear();
 
-            if (settings.floorTransform)
+            // Collect all Unity colliders in the scene
+            var allColliders = FindObjectsByType<Collider>(FindObjectsSortMode.None);
+
+            foreach (var col in allColliders)
             {
-                var planeNormal = settings.floorTransform.up;
+                if (_colliders.Count >= 64) break;
 
-                // The distance of the plane from the world origin (0,0,0) is calculated
-                // by projecting the plane's position onto its own normal.
-                var planeDistance = Vector3.Dot(settings.floorTransform.position, planeNormal);
+                // Skip self and other soft bodies
+                if (col.GetComponent<SoftBodyPhysics>() != null) continue;
 
-                // Create the SDFCollider struct for the plane.
-                var floorPlane = SDFCollider.CreatePlane(planeNormal, planeDistance);
-                _colliders.Add(floorPlane);
-            }
-            else
-            {
-                // Fallback if no floor is assigned (uses the old raycast method)
-                var floorPlane = SDFCollider.CreatePlane(Vector3.up, 0);
-                _colliders.Add(floorPlane);
-            }
+                // Skip triggers
+                if (col.isTrigger) continue;
 
-
-            // Example: Find all GameObjects with a specific tag and add them
-            foreach (var sphereCollider in FindObjectsByType<SphereCollider>(FindObjectsSortMode.None))
-            {
-                if (_colliders.Count >= 64)
+                // Convert Unity collider to SDF representation
+                SDFCollider? sdfCollider = ConvertToSDFCollider(col);
+                if (sdfCollider.HasValue)
                 {
-                    break;
-                } // Don't exceed buffer capacity
-
-                var sphere = SDFCollider.CreateSphere(sphereCollider.transform.position,
-                    sphereCollider.radius * sphereCollider.transform.lossyScale.x);
-                _colliders.Add(sphere);
+                    _colliders.Add(sdfCollider.Value);
+                }
             }
 
-            // Upload the data to the GPU
+            // Upload to GPU
             if (_colliders.Count > 0)
             {
                 _colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
             }
 
             computeShader.SetInt(Constants.ColliderCount, _colliders.Count);
+        }
+
+        private SDFCollider? ConvertToSDFCollider(Collider col)
+        {
+            if (col.CompareTag("Floor") || col.name.ToLower().Contains("floor"))
+            {
+                // Always treat floor as a plane
+                var planeNormal = col.transform.up;
+                var planePos = col.transform.position;
+    
+                // Offset slightly up to account for collider thickness
+                planePos += planeNormal * 0.01f;
+    
+                var planeDistance = Vector3.Dot(planePos, planeNormal);
+                return SDFCollider.CreatePlane(planeNormal, planeDistance);
+            }
+            
+            switch (col)
+            {
+                case BoxCollider box:
+                    var boxTransform = box.transform;
+                    var center = boxTransform.TransformPoint(box.center);
+                    var size = Vector3.Scale(box.size, boxTransform.lossyScale);
+                    return SDFCollider.CreateBox(center, size * 0.5f, boxTransform.rotation);
+
+                case SphereCollider sphere:
+                    var sphereTransform = sphere.transform;
+                    var sphereCenter = sphereTransform.TransformPoint(sphere.center);
+                    var radius = sphere.radius * Mathf.Max(
+                        sphereTransform.lossyScale.x,
+                        sphereTransform.lossyScale.y,
+                        sphereTransform.lossyScale.z);
+                    return SDFCollider.CreateSphere(sphereCenter, radius);
+
+                case CapsuleCollider capsule:
+                    // Convert capsule to cylinder (approximation)
+                    var capsuleTransform = capsule.transform;
+                    var capsuleCenter = capsuleTransform.TransformPoint(capsule.center);
+                    var capsuleRadius = capsule.radius * Mathf.Max(
+                        capsuleTransform.lossyScale.x,
+                        capsuleTransform.lossyScale.z);
+                    var capsuleHeight = capsule.height * capsuleTransform.lossyScale.y;
+
+                    // Capsule direction affects rotation
+                    Quaternion capsuleRotation = capsuleTransform.rotation;
+                    if (capsule.direction == 0) // X-axis
+                        capsuleRotation *= Quaternion.Euler(0, 0, 90);
+                    else if (capsule.direction == 2) // Z-axis
+                        capsuleRotation *= Quaternion.Euler(90, 0, 0);
+
+                    return SDFCollider.CreateCylinder(capsuleCenter, capsuleRadius, capsuleHeight, capsuleRotation);
+
+                case MeshCollider mesh when mesh.convex:
+                    // For now, approximate convex mesh as box
+                    var bounds = mesh.bounds;
+                    var meshCenter = mesh.transform.TransformPoint(bounds.center);
+                    var meshSize = Vector3.Scale(bounds.size, mesh.transform.lossyScale);
+                    return SDFCollider.CreateBox(meshCenter, meshSize * 0.5f, mesh.transform.rotation);
+
+                default:
+                    return null;
+            }
         }
 
 
@@ -1265,6 +1315,5 @@ namespace SoftBody.Scripts
         }
 
         #endregion
-
     }
 }
