@@ -140,6 +140,9 @@ MonoBehaviour:
     sleepTimeThreshold: 1
     wakeDistanceThreshold: 0.1
     showSleepState: 0
+    enableProximityWake: 1
+    proximityWakeRadius: 3
+    proximityCheckInterval: 60
     enableMovementDampening: 1
     stillnessThreshold: 0.01
     dampeningStrength: 0.95
@@ -149,8 +152,9 @@ MonoBehaviour:
     collisionLayers:
       serializedVersion: 2
       m_Bits: 4294967295
-    useCPUFallback: 0
+    SkipUpdate: 0
     debugMode: 0
     graphColouringMethod: 2
+    debugMessages: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}

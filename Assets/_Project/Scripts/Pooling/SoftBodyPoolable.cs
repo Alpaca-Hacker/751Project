@@ -35,16 +35,18 @@ namespace SoftBody.Scripts.Pooling
 
             if (_softBody != null)
             {
-                if (resetPhysicsStateOnGet)
+                if (resetPhysicsStateOnGet && _softBody.ParticleCount > 0)
                 {
+                    var pos = _softBody.transform.position;
                     _softBody.ResetToInitialState();
+                    _softBody.SetWorldPosition(pos);
                 }
 
                 if (wakeUpOnGet)
                 {
                     _softBody.WakeUp();
                 }
-                
+        
                 _softBody.settings.SkipUpdate = false;
             }
 

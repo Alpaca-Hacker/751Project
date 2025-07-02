@@ -75,7 +75,10 @@ namespace SoftBody.Scripts
             {
                 _profiler = gameObject.AddComponent<SoftBodyProfiler>();
 
-                Debug.Log("SoftBodySimulator: Starting initialization...");
+                if (settings.debugMessages)
+                {
+                    Debug.Log("SoftBodySimulator: Starting initialization...");
+                }
                 InitializeComputeShader();
 
                 SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints,
@@ -85,15 +88,21 @@ namespace SoftBody.Scripts
                 SetupBuffers();
                 SetupRenderMaterial();
 
-                Debug.Log(
-                    $"Initialization complete. Particles: {_particles?.Count}, Constraints: {_constraints?.Count}");
+                if (settings.debugMessages)
+                {
+                    Debug.Log(
+                        $"Initialization complete. Particles: {_particles?.Count}, Constraints: {_constraints?.Count}");
+                }
 
                 settings.LogSettings();
 
                 if (_particles != null && _particles.Count > 0)
                 {
                     var testParticle = _particles[0];
-                    Debug.Log($"First particle position: {testParticle.Position}, invMass: {testParticle.InvMass}");
+                    if (settings.debugMessages)
+                    {
+                        Debug.Log($"First particle position: {testParticle.Position}, invMass: {testParticle.InvMass}");
+                    }
                 }
 
                 _lastPosition = transform.position;
@@ -135,7 +144,10 @@ namespace SoftBody.Scripts
             }
             else
             {
-                Debug.Log("Compute shader kernels found successfully.");
+                if (settings.debugMessages)
+                {
+                    Debug.Log("Compute shader kernels found successfully.");
+                }
             }
         }
 
@@ -157,13 +169,13 @@ namespace SoftBody.Scripts
                 {
                     case GraphColouringMethod.Naive:
                     {
-                        GraphColouring.ApplyNaiveGraphColouring(_constraints);
+                        GraphColouring.ApplyNaiveGraphColouring(_constraints, settings.debugMessages);
                         break;
                     }
                     case GraphColouringMethod.Clustering:
                     {
-                        clusters = GraphColouring.CreateClusters(_constraints, _particles.Count);
-                        GraphColouring.ColourClusters(clusters, _constraints);
+                        clusters = GraphColouring.CreateClusters(_constraints, _particles.Count,  settings.debugMessages);
+                        GraphColouring.ColourClusters(clusters, _constraints, settings.debugMessages);
                         break;
                     }
                     case GraphColouringMethod.None:
@@ -179,15 +191,19 @@ namespace SoftBody.Scripts
                     }
                     case GraphColouringMethod.Greedy:
                     {
-                        var numColors = GraphColouring.ColourConstraints(_constraints, _particles.Count);
-                        Debug.Log($"Successfully applied graph coloring with {numColors} colors");
+                        var numColors = GraphColouring.ColourConstraints(_constraints, _particles.Count, settings.debugMessages);
+                        if (settings.debugMessages)
+                        {
+                            Debug.Log($"Successfully applied graph coloring with {numColors} colours");
+                        }
+
                         break;
                     }
                     case GraphColouringMethod.SpectralPartitioning:
                     {
                         clusters = GraphColouring.CreateClustersWithSpectralPartitioning(_constraints,
-                            _particles.Count);
-                        GraphColouring.ColourClusters(clusters, _constraints);
+                            _particles.Count, settings.debugMessages);
+                        GraphColouring.ColourClusters(clusters, _constraints, settings.debugMessages);
                         break;
                     }
                     default:
@@ -259,7 +275,10 @@ namespace SoftBody.Scripts
             if (_weldedUVs != null && _weldedUVs.Length == _particles.Count)
             {
                 _mesh.uv = _weldedUVs;
-                Debug.Log("Applied remapped UVs after welding");
+                if (settings.debugMessages)
+                {
+                    Debug.Log("Applied remapped UVs after welding");
+                }
             }
             else if (_weldedUVs != null)
             {
@@ -284,9 +303,13 @@ namespace SoftBody.Scripts
 
             meshFilter.mesh = _mesh;
 
-            Debug.Log($"Soft body initialized with {_particles.Count} particles and {_constraints.Count} constraints");
-            Debug.Log(
-                $"Constraint buffer size: {SizeOf<Constraint>()} bytes per constraint");
+            if (settings.debugMessages)
+            {
+                Debug.Log(
+                    $"Soft body initialized with {_particles.Count} particles and {_constraints.Count} constraints");
+                Debug.Log(
+                    $"Constraint buffer size: {SizeOf<Constraint>()} bytes per constraint");
+            }
         }
 
         private void SetupRenderMaterial()
@@ -301,7 +324,10 @@ namespace SoftBody.Scripts
             if (renderMaterial != null)
             {
                 meshRenderer.material = renderMaterial;
-                Debug.Log($"Applied custom material: {renderMaterial.name}");
+                if (settings.debugMessages)
+                {
+                    Debug.Log($"Applied custom material: {renderMaterial.name}");
+                }
             }
             else
             {
@@ -677,18 +703,18 @@ namespace SoftBody.Scripts
 
         private SDFCollider? ConvertToSDFCollider(Collider col)
         {
-            if (col.CompareTag("Floor") || col.name.ToLower().Contains("floor"))
-            {
-                // Always treat floor as a plane
-                var planeNormal = col.transform.up;
-                var planePos = col.transform.position;
-    
-                // Offset slightly up to account for collider thickness
-                planePos += planeNormal * 0.01f;
-    
-                var planeDistance = Vector3.Dot(planePos, planeNormal);
-                return SDFCollider.CreatePlane(planeNormal, planeDistance);
-            }
+            // if (col.CompareTag("Floor") || col.name.ToLower().Contains("floor"))
+            // {
+            //     // Always treat floor as a plane
+            //     var planeNormal = col.transform.up;
+            //     var planePos = col.transform.position;
+            //
+            //     // Offset slightly up to account for collider thickness
+            //     planePos += planeNormal * 0.01f;
+            //
+            //     var planeDistance = Vector3.Dot(planePos, planeNormal);
+            //     return SDFCollider.CreatePlane(planeNormal, planeDistance);
+            // }
             
             switch (col)
             {
@@ -931,7 +957,11 @@ namespace SoftBody.Scripts
             {
                 if (settings.showSleepState)
                 {
-                    Debug.Log($"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
+                    if (settings.debugMessages)
+                    {
+                        Debug.Log(
+                            $"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
+                    }
                 }
         
                 // Wake up nearby objects when this one starts moving significantly
@@ -949,8 +979,10 @@ namespace SoftBody.Scripts
             _isAsleep = true;
             if (settings.showSleepState)
             {
-                Debug.Log(
-                    $"{gameObject.name} went to sleep (speed: {_currentMovementSpeed:F4}, inactive for: {_sleepTimer:F1}s)");
+
+                    Debug.Log(
+                        $"{gameObject.name} went to sleep (speed: {_currentMovementSpeed:F4}, inactive for: {_sleepTimer:F1}s)");
+                
             }
         }
 
@@ -980,7 +1012,10 @@ namespace SoftBody.Scripts
                 if (impactForce > 0.5f) // Significant impact
                 {
                     WakeUp();
-                    if (settings.showSleepState) Debug.Log($"{gameObject.name} woken by collision (force: {impactForce:F2})");
+                    if (settings.showSleepState)
+                    {
+                        Debug.Log($"{gameObject.name} woken by collision (force: {impactForce:F2})");
+                    }
                 }
             }
         }
@@ -1079,7 +1114,11 @@ namespace SoftBody.Scripts
             var particleCount = _particles.Count;
             if (particleCount == 0)
             {
-                Debug.Log("Validation skipped: No particles.");
+                if (settings.debugMessages)
+                {
+                    Debug.Log("Validation skipped: No particles.");
+                }
+
                 return;
             }
 
@@ -1118,7 +1157,10 @@ namespace SoftBody.Scripts
                 }
             }
 
-            Debug.Log("CPU Data Validation PASSED. All constraint indices are within particle bounds.");
+            if (settings.debugMessages)
+            {
+                Debug.Log("CPU Data Validation PASSED. All constraint indices are within particle bounds.");
+            }
         }
 
         public void SetParticleData(Particle[] inputArray)
@@ -1159,6 +1201,42 @@ namespace SoftBody.Scripts
 
 
         #region Designer Methods
+        
+        public void SetWorldPosition(Vector3 newPosition)
+        {
+            if (_particles == null || _particleBuffer == null)
+            {
+                Debug.LogWarning("Cannot set world position - physics system not initialized.");
+                return;
+            }
+
+            if (settings.debugMessages)
+            {
+                Debug.Log("Setting world position to " + newPosition);
+            }
+
+            var currentCenter = Vector3.zero;
+            foreach (var particle in _particles)
+            {
+                currentCenter += particle.Position;
+            }
+            currentCenter /= _particles.Count;
+            
+            var offset = newPosition - currentCenter;
+            
+            var movedParticles = new Particle[_particles.Count];
+            for (var i = 0; i < _particles.Count; i++)
+            {
+                var p = _particles[i];
+                p.Position += offset;
+                movedParticles[i] = p;
+            }
+            
+            _particleBuffer.SetData(movedParticles);
+            _particles = movedParticles.ToList();
+            
+            transform.position = newPosition;
+        }
 
         // Public methods for designer interaction
         public void ResetToInitialState()
@@ -1166,6 +1244,12 @@ namespace SoftBody.Scripts
             if (_initialParticles == null || _particleBuffer == null)
             {
                 Debug.LogWarning("Cannot reset - initial state not stored or buffers not initialized");
+                return;
+            }
+            
+            if (_initialParticles.Count == 0 || _particles == null || _particles.Count == 0)
+            {
+                Debug.LogWarning("Cannot reset - no particles to reset");
                 return;
             }
 
@@ -1203,7 +1287,10 @@ namespace SoftBody.Scripts
 
             _volumeConstraintBuffer.SetData(_volumeConstraints);
 
-            Debug.Log("Soft body reset to initial state");
+            if (settings.debugMessages)
+            {
+                Debug.Log("Soft body reset to initial state");
+            }
         }
 
         public void ResetVelocities()
@@ -1222,7 +1309,10 @@ namespace SoftBody.Scripts
             }
 
             _particleBuffer.SetData(currentParticles);
-            Debug.Log("Velocities reset");
+            if (settings.debugMessages)
+            {
+                Debug.Log("Velocities reset");
+            }
         }
 
         public void PokeAtPosition(Vector3 worldPosition, Vector3 impulse, float radius = 1f)
@@ -1253,8 +1343,10 @@ namespace SoftBody.Scripts
             }
 
             if (affectedParticles.Count == 0) return;
-
-            Debug.Log($"Poking {affectedParticles.Count} particles at {worldPosition}");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Poking {affectedParticles.Count} particles at {worldPosition}");
+            }
 
             // Apply impulse with falloff
             foreach (var idx in affectedParticles)

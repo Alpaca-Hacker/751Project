@@ -13,9 +13,11 @@ namespace SoftBody.Scripts
         {
             var initialConstraintCount = constraints.Count;
             var maxAdditionalConstraints = settings.maxAdditionalConstraints;
-
-            Debug.Log($"Starting stuffed body creation. Initial constraints: {initialConstraintCount}");
-            Debug.Log($"Constraint budget: {maxAdditionalConstraints} additional constraints");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Starting stuffed body creation. Initial constraints: {initialConstraintCount}");
+                Debug.Log($"Constraint budget: {maxAdditionalConstraints} additional constraints");
+            }
 
             var surfaceParticles = new List<int>();
             var interiorParticles = new List<int>();
@@ -40,13 +42,15 @@ namespace SoftBody.Scripts
             var volumeConstraintsAdded = volumeConstraints.Count - volumeBefore;
 
             var totalAdded = constraints.Count - initialConstraintCount;
-
-            Debug.Log($"Stuffed body creation complete:");
-            Debug.Log($"  - Stuffing constraints: {stuffingConstraints}");
-            Debug.Log($"  - Skin constraints: {skinConstraints}");
-            Debug.Log($"  - Volume constraints: {volumeConstraintsAdded}");
-            Debug.Log($"  - Total added: {totalAdded} (budget: {maxAdditionalConstraints})");
-            Debug.Log($"  - Final total: {constraints.Count} constraints");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Stuffed body creation complete:");
+                Debug.Log($"  - Stuffing constraints: {stuffingConstraints}");
+                Debug.Log($"  - Skin constraints: {skinConstraints}");
+                Debug.Log($"  - Volume constraints: {volumeConstraintsAdded}");
+                Debug.Log($"  - Total added: {totalAdded} (budget: {maxAdditionalConstraints})");
+                Debug.Log($"  - Final total: {constraints.Count} constraints");
+            }
 
             if (totalAdded > maxAdditionalConstraints)
             {
@@ -119,8 +123,11 @@ namespace SoftBody.Scripts
                     }
                 }
             }
-    
-            Debug.Log($"Created {totalConstraintsAdded} stuffing network constraints (performance limited)");
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Created {totalConstraintsAdded} stuffing network constraints (performance limited)");
+            }
         }
 
         private static List<int> FindNearestParticles(int particleIdx, List<int> candidateParticles, 
@@ -175,8 +182,11 @@ namespace SoftBody.Scripts
                     }
                 }
             }
-    
-            Debug.Log($"Created {skinConstraintsAdded} skin constraints (performance limited)");
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Created {skinConstraintsAdded} skin constraints (performance limited)");
+            }
         }
 
         private static void GenerateStuffingParticles(List<Particle> particles,
@@ -186,8 +196,10 @@ namespace SoftBody.Scripts
             var maxStuffingParticles = Mathf.Min(settings.maxStuffingParticles, particles.Count / 4);
             var stuffingCount = Mathf.RoundToInt(maxStuffingParticles * settings.stuffingDensity);
             stuffingCount = Mathf.Clamp(stuffingCount, 5, maxStuffingParticles);
-    
-            Debug.Log($"Generating {stuffingCount} stuffing particles (capped for performance)");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Generating {stuffingCount} stuffing particles (capped for performance)");
+            }
 
             for (var i = 0; i < stuffingCount; i++)
             {
@@ -210,7 +222,10 @@ namespace SoftBody.Scripts
                 interiorParticles.Add(particles.Count - 1);
             }
 
-            Debug.Log($"Generated {stuffingCount} stuffing particles");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Generated {stuffingCount} stuffing particles");
+            }
         }
 
         private static void AddPressureConstraint(List<Particle> particles,
@@ -296,8 +311,11 @@ namespace SoftBody.Scripts
                     volumeConstraintsAdded++;
                 }
             }
-    
-            Debug.Log($"Created {volumeConstraintsAdded} pressure chamber constraints (performance limited)");
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Created {volumeConstraintsAdded} pressure chamber constraints (performance limited)");
+            }
         }
 
         private static List<int> FindNearestSurfaceParticles(int interiorIdx,

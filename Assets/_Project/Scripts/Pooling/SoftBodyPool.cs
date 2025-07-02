@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using SoftBody.Scripts.Pooling;
 using UnityEngine;
@@ -54,7 +55,7 @@ namespace SoftBody.Scripts
 
         private void InitializePool()
         {
-            for (int i = 0; i < initialSize; i++)
+            for (var i = 0; i < initialSize; i++)
             {
                 CreatePooledObject();
             }
@@ -62,31 +63,62 @@ namespace SoftBody.Scripts
             Debug.Log($"SoftBodyPool '{gameObject.name}' initialized with {initialSize} objects");
         }
 
+        // In SoftBodyPool.cs - CreatePooledObject method
         private GameObject CreatePooledObject()
         {
             var obj = Instantiate(softBodyPrefab, transform);
             obj.name = $"{softBodyPrefab.name}_Pooled_{_allPooledObjects.Count}";
-            obj.SetActive(false);
-
-            // Add the poolable component if it doesn't exist
+            
+            var softBody = obj.GetComponent<SoftBodyPhysics>();
+            if (softBody == null)
+            {
+                Debug.LogError($"Pooled object {obj.name} doesn't have SoftBodyPhysics component!");
+                Destroy(obj);
+                return null;
+            }
+            
+            obj.SetActive(true);
+            
             var poolable = obj.GetComponent<SoftBodyPoolable>();
             if (poolable == null)
             {
                 poolable = obj.AddComponent<SoftBodyPoolable>();
             }
-
-            // Configure the poolable component
+            
             poolable.Initialize(this);
             poolable.enableAutoReturn = enableAutoReturn;
             poolable.autoReturnTime = autoReturnTime;
             poolable.fallThreshold = fallThreshold;
             poolable.resetPhysicsStateOnGet = resetPhysicsOnGet;
             poolable.wakeUpOnGet = wakeUpOnGet;
+            
+            StartCoroutine(DeactivateAfterInit(obj, softBody));
 
             _availableObjects.Enqueue(obj);
             _allPooledObjects.Add(obj);
 
             return obj;
+        }
+
+        private IEnumerator DeactivateAfterInit(GameObject obj, SoftBodyPhysics softBody)
+        {
+            var waitFrames = 0;
+            while (softBody.ParticleCount == 0 && waitFrames < 10)
+            {
+                yield return null;
+                waitFrames++;
+            }
+    
+            if (softBody.ParticleCount == 0)
+            {
+                Debug.LogWarning($"Soft body {obj.name} failed to initialize particles after {waitFrames} frames");
+            }
+            else
+            {
+                Debug.Log($"Soft body {obj.name} initialized with {softBody.ParticleCount} particles");
+            }
+    
+            obj.SetActive(false);
         }
 
         public GameObject GetObject()
@@ -113,11 +145,11 @@ namespace SoftBody.Scripts
             // Reset the object
             ResetObject(obj);
 
-            obj.SetActive(true);
+           // obj.SetActive(true);
 
             // Notify the poolable component
-            var poolable = obj.GetComponent<SoftBodyPoolable>();
-            poolable?.OnGetFromPool();
+            // var poolable = obj.GetComponent<SoftBodyPoolable>();
+            // poolable?.OnGetFromPool();
 
             OnObjectSpawned?.Invoke(obj);
 
@@ -197,7 +229,7 @@ namespace SoftBody.Scripts
         {
             count = Mathf.Min(count, maxSize - _allPooledObjects.Count);
 
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
                 CreatePooledObject();
             }

@@ -490,6 +490,8 @@ void UpdateVelocities(uint3 id : SV_DispatchThreadID)
     particles[index] = p;
 }
 
+// In SoftBodyCompute.compute
+
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
 {
@@ -501,6 +503,8 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
     
     // Clear the correction from the previous iteration
     collisionCorrections[p_idx] = float3(0,0,0);
+    float3 totalCorrection = float3(0,0,0);
+    float totalWeight = 0;
     int numCollisions = 0;
 
     // Iterate through all colliders
@@ -583,20 +587,46 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
 
         if (penetration < 0)
         {
-            // We have a collision. Calculate the positional correction needed.
-            // Add a small margin to prevent tunneling
-            float correctionMagnitude = -penetration + 0.001f;
+            // Much gentler collision response
+            float correctionMagnitude = -penetration;
             
-            // Accumulate corrections
-            collisionCorrections[p_idx] += normal * correctionMagnitude;
+            // Reduce correction based on penetration depth
+            // Small penetrations get less correction to prevent bouncing
+            float depthFactor = saturate(-penetration * 2.0); // 0 to 1 based on penetration
+            correctionMagnitude *= lerp(0.1, 1.0, depthFactor); // 10% to 100% correction
+            
+            // Very small buffer to prevent re-penetration
+            correctionMagnitude += 0.0001f; // Much smaller than before
+            
+            // Weight all collisions equally
+            float weight = 1.0;
+            totalCorrection += normal * correctionMagnitude * weight;
+            totalWeight += weight;
             numCollisions++;
         }
     }
     
-    // Average the corrections if there were multiple collisions
-    if (numCollisions > 1)
+    // Average corrections if multiple collisions
+    if (totalWeight > 0)
     {
-        collisionCorrections[p_idx] /= numCollisions;
+        float3 correction = totalCorrection / totalWeight;
+        
+        // Further dampen the correction to prevent explosive behavior
+        float maxCorrection = 0.02; // Maximum 2cm correction per frame
+        float correctionMag = length(correction);
+        if (correctionMag > maxCorrection)
+        {
+            correction = correction * (maxCorrection / correctionMag);
+        }
+        
+        // Apply even less correction for multiple simultaneous collisions
+        // This prevents particles from being squeezed out violently
+        if (numCollisions > 1)
+        {
+            correction *= 0.5; // Half the correction for multiple collisions
+        }
+        
+        collisionCorrections[p_idx] = correction;
     }
 }
 
@@ -610,35 +640,43 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
     float3 correction = collisionCorrections[p_idx];
 
     // If there was a correction to be made...
-    if (dot(correction, correction) > 1e-6)
+    if (dot(correction, correction) > 1e-8)
     {
         Particle p = particles[p_idx];
         
         // Apply the correction to the position
         p.positionAndInvMass.xyz += correction;
         
-        // --- FRICTION (The Jitter/Creep Killer) ---
-        // We can now calculate friction correctly.
-        // The 'correction' vector represents the impulse that was applied.
-        // Its magnitude is proportional to the normal force.
-        float3 prev_pos_after_integration = previousPositions[p_idx];
-        float3 vel_before_correction = (p.positionAndInvMass.xyz - correction - prev_pos_after_integration) / deltaTime;
-        
+        float3 vel = p.velocity.xyz;
         float3 normal = SafeNormalize(correction);
-        float3 vel_tangent = vel_before_correction - dot(vel_before_correction, normal) * normal;
-
-        float friction_coeff = 0.8; // High friction
-        float normal_force_proxy = length(correction);
-        float friction_magnitude = normal_force_proxy * friction_coeff;
-
-        // Apply friction as a positional change that counteracts tangential velocity
-        float3 friction_correction = -vel_tangent * deltaTime;
-        if(length(friction_correction) > friction_magnitude)
+        
+        // Decompose velocity into normal and tangential components
+        float normalSpeed = dot(vel, normal);
+        float3 normalVel = normal * normalSpeed;
+        float3 tangentVel = vel - normalVel;
+        
+        // Reduce normal velocity (bounce reduction)
+        if (normalSpeed < 0) 
         {
-            friction_correction = SafeNormalize(friction_correction) * friction_magnitude;
+            normalVel *= 0.1; // 90% energy loss on impact
         }
-
-        p.positionAndInvMass.xyz += friction_correction;
+        
+        // Apply friction to tangential velocity
+        float frictionCoeff = 0.3; // Moderate friction
+        float tangentSpeed = length(tangentVel);
+        if (tangentSpeed > 0.001)
+        {
+            // Coulomb friction model - up to a maximum reduction
+            float maxFrictionForce = frictionCoeff * length(correction) / deltaTime;
+            float frictionReduction = min(maxFrictionForce * deltaTime, tangentSpeed);
+            tangentVel *= (tangentSpeed - frictionReduction) / tangentSpeed;
+        }
+        
+        // Recombine velocity components
+        p.velocity.xyz = normalVel + tangentVel;
+        
+        // Add small damping to prevent jitter
+        p.velocity.xyz *= 0.98;
         
         particles[p_idx] = p;
     }

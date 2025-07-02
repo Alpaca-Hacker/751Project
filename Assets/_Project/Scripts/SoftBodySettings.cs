@@ -88,10 +88,12 @@ namespace SoftBody.Scripts
         public bool SkipUpdate = false;
         public bool debugMode;
         public GraphColouringMethod graphColouringMethod = GraphColouringMethod.None;
+        public bool debugMessages = false;
 
 
         public void LogSettings()
         {
+            if (!debugMessages) return;
             Debug.Log($"SoftBody Settings: Size={size}, " +
                       $"Resolution={resolution}, " +
                       $"Mass={mass}, " +

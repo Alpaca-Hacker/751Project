@@ -17,7 +17,7 @@ namespace SoftBody.Scripts
     {
 
         public static List<Cluster> CreateClusters(List<Constraint> constraints, int particleCount,
-            int targetClustersPerParticle = 8)
+          bool debugMessages,  int targetClustersPerParticle = 8)
         {
             // Build adjacency information
             var particleToConstraints = new List<int>[particleCount];
@@ -127,11 +127,15 @@ namespace SoftBody.Scripts
                 clusters.RemoveAt(bestJ);
             }
 
-            Debug.Log($"Created {clusters.Count} clusters from {constraints.Count} constraints");
+            if (debugMessages)
+            {
+                Debug.Log($"Created {clusters.Count} clusters from {constraints.Count} constraints");
+            }
+
             return clusters;
         }
 
-        public static void ColourClusters(List<Cluster> clusters, List<Constraint> constraints)
+        public static void ColourClusters(List<Cluster> clusters, List<Constraint> constraints, bool debugMessages)
         {
             // Since clusters now contain non-conflicting constraints, 
             // all constraints within a cluster can have the same color
@@ -148,19 +152,26 @@ namespace SoftBody.Scripts
                     constraints[constraintIdx] = constraint;
                 }
             }
-    
-            Debug.Log($"Graph clustering complete: {clusters.Count} colour groups used");
+
+            if (debugMessages)
+            {
+                Debug.Log($"Graph clustering complete: {clusters.Count} colour groups used");
+            }
         }
         
-        public static int ColourConstraints(List<Constraint> constraints, int particleCount)
+        public static int ColourConstraints(List<Constraint> constraints, int particleCount, bool debugMessages)
         {
             // Build adjacency list for constraints
             var constraintAdjacency = BuildConstraintAdjacencyList(constraints, particleCount);
             
             // Apply greedy graph coloring
             var maxColor = GreedyGraphColoring(constraints, constraintAdjacency);
-            
-            Debug.Log($"Graph coloring complete: {maxColor + 1} color groups needed for {constraints.Count} constraints");
+            if (debugMessages)
+            {
+                Debug.Log(
+                    $"Graph coloring complete: {maxColor + 1} color groups needed for {constraints.Count} constraints");
+            }
+
             return maxColor + 1;
         }
         
@@ -246,7 +257,7 @@ namespace SoftBody.Scripts
         }
 
         public static List<Cluster> CreateClustersWithSpectralPartitioning(List<Constraint> constraints,
-            int particleCount, int targetClusters = 32)
+            int particleCount, bool debugMessages, int targetClusters = 32)
         {
             // Build constraint graph Laplacian
             var n = constraints.Count;
@@ -355,13 +366,20 @@ namespace SoftBody.Scripts
                 }
             }
 
-            Debug.Log($"Created {clusters.Count} independent clusters from {constraints.Count} constraints");
+            if (debugMessages)
+            {
+                Debug.Log($"Created {clusters.Count} independent clusters from {constraints.Count} constraints");
+            }
+
             return clusters;
         }
         
-        public static void ApplyNaiveGraphColouring(List<Constraint> constraints)
+        public static void ApplyNaiveGraphColouring(List<Constraint> constraints, bool debugMessages)
         {
-            Debug.Log($"Applying naive graph colouring to {constraints.Count} constraints...");
+            if (debugMessages)
+            {
+                Debug.Log($"Applying naive graph colouring to {constraints.Count} constraints...");
+            }
 
             // Simple greedy graph colouring algorithm
             var colouredConstraints = new List<Constraint>();

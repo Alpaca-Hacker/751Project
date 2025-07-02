@@ -60,13 +60,21 @@ namespace SoftBody.Scripts
                 }
             }
 
-            Debug.Log($"CONNECTIVITY: Found {components.Count} separate components");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"CONNECTIVITY: Found {components.Count} separate components");
+            }
+
             for (var i = 0; i < components.Count; i++)
             {
-                Debug.Log($"Component {i}: {components[i].Count} particles");
-                if (components[i].Count < 10) // Log small components
+                if (settings.debugMessages)
                 {
-                    Debug.Log($"Small component particles: [{string.Join(", ", components[i])}]");
+                    Debug.Log($"Component {i}: {components[i].Count} particles");
+                    
+                    if (components[i].Count < 10) // Log small components
+                    {
+                        Debug.Log($"Small component particles: [{string.Join(", ", components[i])}]");
+                    }
                 }
             }
             
@@ -94,8 +102,10 @@ namespace SoftBody.Scripts
             List<List<int>> components, SoftBodySettings settings)
         {
             if (components.Count <= 1) return; // Already connected
-
-            Debug.Log($"Connecting {components.Count} disconnected components...");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Connecting {components.Count} disconnected components...");
+            }
 
             // Connect each component to its nearest neighbor component
             for (var i = 0; i < components.Count; i++)
@@ -127,9 +137,11 @@ namespace SoftBody.Scripts
                     {
                         SoftBodyGenerator.AddConstraintWithValidation(particles, constraints, bestParticleI, bestParticleJ,
                             settings.structuralCompliance * 0.5f); // Slightly more flexible bridge
-
-                        Debug.Log(
-                            $"Added bridge constraint between components {i} and {j}: particles {bestParticleI} <-> {bestParticleJ} (distance: {minDistance:F3})");
+                        if (settings.debugMessages)
+                        {
+                            Debug.Log(
+                                $"Added bridge constraint between components {i} and {j}: particles {bestParticleI} <-> {bestParticleJ} (distance: {minDistance:F3})");
+                        }
                     }
                 }
             }
@@ -138,9 +150,12 @@ namespace SoftBody.Scripts
         private static void AddProximityConstraints(List<Particle> particles, List<Constraint> constraints,
             SoftBodySettings settings)
         {
-            Debug.Log("Adding proximity-based constraints...");
+            if (settings.debugMessages)
+            {
+                Debug.Log("Adding proximity-based constraints...");
+            }
 
-            var maxConnectionDistance = CalculateOptimalConnectionDistance(constraints);
+            var maxConnectionDistance = CalculateOptimalConnectionDistance(constraints, settings.debugMessages);
 
             var proximityConstraintsAdded = 0;
 
@@ -167,10 +182,13 @@ namespace SoftBody.Scripts
                 }
             }
 
-            Debug.Log($"Added {proximityConstraintsAdded} proximity constraints");
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Added {proximityConstraintsAdded} proximity constraints");
+            }
         }
 
-        private static float CalculateOptimalConnectionDistance(List<Constraint> constraints)
+        private static float CalculateOptimalConnectionDistance(List<Constraint> constraints, bool debugMessages)
         {
             if (constraints.Count == 0) return 0.1f;
 
@@ -185,9 +203,12 @@ namespace SoftBody.Scripts
 
             // Connection distance should be slightly larger than average constraint length
             var connectionDistance = avgConstraintLength * 1.5f;
+            if (debugMessages)
+            {
+                Debug.Log(
+                    $"Calculated optimal connection distance: {connectionDistance:F4} (avg constraint: {avgConstraintLength:F4})");
+            }
 
-            Debug.Log(
-                $"Calculated optimal connection distance: {connectionDistance:F4} (avg constraint: {avgConstraintLength:F4})");
             return connectionDistance;
         }
 
