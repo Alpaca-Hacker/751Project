@@ -7,6 +7,7 @@
 #pragma kernel DebugAndValidateParticles
 #pragma kernel SolveGeneralCollisions
 #pragma kernel ApplyCollisionCorrections
+#pragma kernel ApplyGlobalDamping
 
 #pragma target 4.5
 #pragma float_precision(high)
@@ -490,8 +491,6 @@ void UpdateVelocities(uint3 id : SV_DispatchThreadID)
     particles[index] = p;
 }
 
-// In SoftBodyCompute.compute
-
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
 {
@@ -501,13 +500,10 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
     Particle p = particles[p_idx];
     if (p.positionAndInvMass.w <= 0.0) return;
     
-    // Clear the correction from the previous iteration
     collisionCorrections[p_idx] = float3(0,0,0);
     float3 totalCorrection = float3(0,0,0);
-    float totalWeight = 0;
     int numCollisions = 0;
 
-    // Iterate through all colliders
     for (int c_idx = 0; c_idx < colliderCount; c_idx++)
     {
         SDFCollider c = colliders[c_idx];
@@ -515,27 +511,7 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
         float penetration = 0;
         float3 normal = float3(0,1,0);
 
-        if (c.type == COLLIDER_TYPE_SPHERE)
-        {
-            float3 center = c.data1.xyz;
-            float radius = c.data1.w;
-            penetration = sdf_sphere(pos, center, radius);
-            if (penetration < 0)
-            {
-                normal = SafeNormalize(pos - center);
-            }
-        }
-        else if (c.type == COLLIDER_TYPE_PLANE)
-        {
-            float3 plane_normal = c.data1.xyz;
-            float plane_dist = c.data1.w;
-            penetration = sdf_plane(pos, plane_normal, plane_dist);
-            if (penetration < 0)
-            {
-                normal = plane_normal;
-            }
-        }
-        else if (c.type == COLLIDER_TYPE_BOX)
+        if (c.type == COLLIDER_TYPE_BOX)
         {
             float3 box_center = c.data1.xyz;
             float3 box_halfExtents = c.data2.xyz;
@@ -543,92 +519,119 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
             
             penetration = sdf_box_rotated(pos, box_center, box_halfExtents, box_rotation);
             
-            if (penetration < 0)
+            if (penetration < 0.0) // Any penetration needs correction
             {
-                // Calculate normal by finding closest point on box surface
                 float3 localP = rotate_vector_by_quaternion(pos - box_center, quaternion_conjugate(box_rotation));
                 float3 closestPoint = clamp(localP, -box_halfExtents, box_halfExtents);
                 float3 localNormal = SafeNormalize(localP - closestPoint);
                 normal = rotate_vector_by_quaternion(localNormal, box_rotation);
+                
+                // Balanced correction - not too gentle, not too aggressive
+                float correctionMagnitude;
+                if (penetration < -0.05) // Deep penetration
+                {
+                    correctionMagnitude = min(-penetration * 0.6, 0.02); // Move out more aggressively
+                }
+                else // Shallow penetration
+                {
+                    correctionMagnitude = min(-penetration * 0.4, 0.01); // Gentler correction
+                }
+                
+                totalCorrection += normal * correctionMagnitude;
+                numCollisions++;
             }
         }
-        else if (c.type == COLLIDER_TYPE_CYLINDER)
+        else if (c.type == COLLIDER_TYPE_PLANE)
         {
-            float3 cyl_center = c.data1.xyz;
-            float cyl_radius = c.data2.x;
-            float cyl_halfHeight = c.data2.y;
-            float4 cyl_rotation = c.rotation;
+            float3 plane_normal = c.data1.xyz;
+            float plane_dist = c.data1.w;
+            penetration = sdf_plane(pos, plane_normal, plane_dist);
             
-            penetration = sdf_cylinder_rotated(pos, cyl_center, cyl_radius, cyl_halfHeight, cyl_rotation);
-            
-            if (penetration < 0)
+            if (penetration < 0.0)
             {
-                // Calculate normal based on closest feature
-                float3 localP = rotate_vector_by_quaternion(pos - cyl_center, quaternion_conjugate(cyl_rotation));
-                float heightDist = abs(localP.y) - cyl_halfHeight;
-                float radialDist = length(localP.xz) - cyl_radius;
+                normal = plane_normal;
                 
-                float3 localNormal;
-                if (heightDist > radialDist)
-                {
-                    // Closest to top/bottom cap
-                    localNormal = float3(0, sign(localP.y), 0);
-                }
+                // More aggressive for ground plane to prevent falling through
+                float correctionMagnitude;
+                if (penetration < -0.05)
+                    correctionMagnitude = min(-penetration * 0.8, 0.03);
                 else
-                {
-                    // Closest to cylindrical surface
-                    float2 radialDir = normalize(localP.xz);
-                    localNormal = float3(radialDir.x, 0, radialDir.y);
-                }
-                
-                normal = rotate_vector_by_quaternion(localNormal, cyl_rotation);
+                    correctionMagnitude = min(-penetration * 0.5, 0.015);
+                    
+                totalCorrection += normal * correctionMagnitude;
+                numCollisions++;
             }
         }
-
-        if (penetration < 0)
+        else if (c.type == COLLIDER_TYPE_SPHERE)
         {
-            // Much gentler collision response
-            float correctionMagnitude = -penetration;
+            float3 center = c.data1.xyz;
+            float radius = c.data1.w;
+            penetration = sdf_sphere(pos, center, radius);
             
-            // Reduce correction based on penetration depth
-            // Small penetrations get less correction to prevent bouncing
-            float depthFactor = saturate(-penetration * 2.0); // 0 to 1 based on penetration
-            correctionMagnitude *= lerp(0.1, 1.0, depthFactor); // 10% to 100% correction
-            
-            // Very small buffer to prevent re-penetration
-            correctionMagnitude += 0.0001f; // Much smaller than before
-            
-            // Weight all collisions equally
-            float weight = 1.0;
-            totalCorrection += normal * correctionMagnitude * weight;
-            totalWeight += weight;
-            numCollisions++;
+            if (penetration < 0.0)
+            {
+                normal = SafeNormalize(pos - center);
+                float correctionMagnitude = min(-penetration * 0.5, 0.015);
+                totalCorrection += normal * correctionMagnitude;
+                numCollisions++;
+            }
         }
     }
     
-    // Average corrections if multiple collisions
-    if (totalWeight > 0)
+    if (numCollisions > 0)
     {
-        float3 correction = totalCorrection / totalWeight;
+        float3 correction = totalCorrection / numCollisions;
         
-        // Further dampen the correction to prevent explosive behavior
-        float maxCorrection = 0.02; // Maximum 2cm correction per frame
+        // Reasonable correction limits
+        float maxCorrection = 0.01; // 1cm max per frame
         float correctionMag = length(correction);
         if (correctionMag > maxCorrection)
         {
             correction = correction * (maxCorrection / correctionMag);
         }
         
-        // Apply even less correction for multiple simultaneous collisions
-        // This prevents particles from being squeezed out violently
-        if (numCollisions > 1)
-        {
-            correction *= 0.5; // Half the correction for multiple collisions
-        }
-        
         collisionCorrections[p_idx] = correction;
     }
 }
+// [numthreads(THREAD_GROUP_SIZE, 1, 1)]
+// void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
+// {
+//     uint p_idx = id.x;
+//     if (p_idx >= (uint)particleCount) return;
+//
+//     float3 correction = collisionCorrections[p_idx];
+//
+//     if (dot(correction, correction) > 1e-8)
+//     {
+//         Particle p = particles[p_idx];
+//         
+//         // Apply position correction
+//         p.positionAndInvMass.xyz += correction;
+//         
+//         float3 vel = p.velocity.xyz;
+//         float3 normal = SafeNormalize(correction);
+//         
+//         // Decompose velocity
+//         float normalSpeed = dot(vel, normal);
+//         float3 normalVel = normal * normalSpeed;
+//         float3 tangentVel = vel - normalVel;
+//         
+//         // Strong energy loss on collision
+//         if (normalSpeed < 0) 
+//         {
+//             normalVel *= 0.05; // 95% energy loss
+//         }
+//         
+//         // Strong friction on tangential velocity
+//         float frictionCoeff = 0.8; 
+//         tangentVel *= (1.0 - frictionCoeff);
+//         
+//         // Recombine with additional overall damping
+//         p.velocity.xyz = (normalVel + tangentVel) * 0.9; // Additional 10% velocity loss
+//         
+//         particles[p_idx] = p;
+//     }
+// }
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
@@ -636,50 +639,138 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
     uint p_idx = id.x;
     if (p_idx >= (uint)particleCount) return;
 
-    // Read the correction calculated by the solver
     float3 correction = collisionCorrections[p_idx];
 
-    // If there was a correction to be made...
     if (dot(correction, correction) > 1e-8)
     {
         Particle p = particles[p_idx];
         
-        // Apply the correction to the position
+        // Apply position correction
         p.positionAndInvMass.xyz += correction;
         
         float3 vel = p.velocity.xyz;
         float3 normal = SafeNormalize(correction);
         
-        // Decompose velocity into normal and tangential components
+        // Moderate velocity response - not too bouncy, not too dead
         float normalSpeed = dot(vel, normal);
-        float3 normalVel = normal * normalSpeed;
-        float3 tangentVel = vel - normalVel;
         
-        // Reduce normal velocity (bounce reduction)
-        if (normalSpeed < 0) 
+        if (normalSpeed < 0) // Moving into surface
         {
-            normalVel *= 0.1; // 90% energy loss on impact
+            float3 normalVel = normal * normalSpeed;
+            float3 tangentVel = vel - normalVel;
+            
+            // Moderate energy loss - enough to prevent bouncing, not too much
+            normalVel *= 0.2; // 80% energy loss
+            tangentVel *= 0.7; // Some friction but not too much
+            
+            p.velocity.xyz = normalVel + tangentVel;
         }
         
-        // Apply friction to tangential velocity
-        float frictionCoeff = 0.3; // Moderate friction
-        float tangentSpeed = length(tangentVel);
-        if (tangentSpeed > 0.001)
-        {
-            // Coulomb friction model - up to a maximum reduction
-            float maxFrictionForce = frictionCoeff * length(correction) / deltaTime;
-            float frictionReduction = min(maxFrictionForce * deltaTime, tangentSpeed);
-            tangentVel *= (tangentSpeed - frictionReduction) / tangentSpeed;
-        }
-        
-        // Recombine velocity components
-        p.velocity.xyz = normalVel + tangentVel;
-        
-        // Add small damping to prevent jitter
+        // Light additional damping
         p.velocity.xyz *= 0.98;
         
         particles[p_idx] = p;
     }
+}
+
+
+[numthreads(THREAD_GROUP_SIZE, 1, 1)]
+void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    if (index >= (uint)particleCount) return;
+    
+    Particle p = particles[index];
+    if (p.positionAndInvMass.w <= 0.0) return;
+    
+    float3 pos = p.positionAndInvMass.xyz;
+    float3 vel = p.velocity.xyz;
+    float speed = length(vel);
+    
+    if (speed < 0.001) return; 
+    
+    // Check distance to nearest surface
+    float minDistanceToSurface = 1000.0; 
+    float3 surfaceNormal = float3(0, 1, 0);
+    
+    for (int c_idx = 0; c_idx < colliderCount; c_idx++)
+    {
+        SDFCollider c = colliders[c_idx];
+        float distance = 1000.0;
+        
+        if (c.type == COLLIDER_TYPE_BOX)
+        {
+            distance = sdf_box_rotated(pos, c.data1.xyz, c.data2.xyz, c.rotation);
+        }
+        else if (c.type == COLLIDER_TYPE_PLANE)
+        {
+            distance = sdf_plane(pos, c.data1.xyz, c.data1.w);
+        }
+        else if (c.type == COLLIDER_TYPE_SPHERE)
+        {
+            distance = sdf_sphere(pos, c.data1.xyz, c.data1.w);
+        }
+        
+        if (distance < minDistanceToSurface)
+        {
+            minDistanceToSurface = distance;
+            
+            // Calculate surface normal (simplified)
+            if (c.type == COLLIDER_TYPE_PLANE)
+            {
+                surfaceNormal = c.data1.xyz;
+            }
+            else if (c.type == COLLIDER_TYPE_BOX)
+            {
+                // Simplified box normal calculation
+                float3 localP = rotate_vector_by_quaternion(pos - c.data1.xyz, quaternion_conjugate(c.rotation));
+                float3 closestPoint = clamp(localP, -c.data2.xyz, c.data2.xyz);
+                float3 localNormal = SafeNormalize(localP - closestPoint);
+                surfaceNormal = rotate_vector_by_quaternion(localNormal, c.rotation);
+            }
+        }
+    }
+
+    if (minDistanceToSurface < 0.05) // Within 5cm of surface
+    {
+        // Strong surface friction
+        float contactStrength = 1.0 - saturate(minDistanceToSurface / 0.05);
+        
+        // Separate normal and tangential components
+        float3 normalVel = dot(vel, surfaceNormal) * surfaceNormal;
+        float3 tangentialVel = vel - normalVel;
+        
+        // Apply strong friction to tangential (sliding) motion
+        float tangentialDamping = lerp(0.99, 0.85, contactStrength); // 1% to 15% loss
+        tangentialVel *= tangentialDamping;
+        
+        // Less damping for normal motion (bouncing)
+        float normalDamping = lerp(0.99, 0.95, contactStrength);
+        normalVel *= normalDamping;
+        
+        vel = normalVel + tangentialVel;
+        
+        // Extra damping for spinning/rotation-like motion
+        if (length(tangentialVel) > length(normalVel) * 2.0) // Mostly tangential = spinning
+        {
+            vel *= 0.9; // Extra 10% damping for spinning
+        }
+    }
+    else
+    {
+        float dampingFactor = 0.998;
+        // Air resistance only
+        vel *= dampingFactor;
+    }
+    
+    // Stop very slow motion completely
+    if (length(vel) < 0.001)
+    {
+        vel = float3(0, 0, 0);
+    }
+    
+    p.velocity.xyz = vel;
+    particles[index] = p;
 }
 
 

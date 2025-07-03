@@ -43,6 +43,7 @@ namespace SoftBody.Scripts
         private int _kernelDebugAndValidate;
         private int _kernelSolveGeneralCollisions;
         private int _kernelApplyCollisionCorrections;
+        private int _kernelApplyGlobalDamping;
 
         private UnityEngine.Rendering.AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending = false;
@@ -60,14 +61,23 @@ namespace SoftBody.Scripts
 
         private float _lastActiveTime;
         private float _totalSleepTime = 0f;
-        
-        private static List<SoftBodyPhysics> _allSoftBodies = new ();
+
+        private static List<SoftBodyPhysics> _allSoftBodies = new();
         private static float _lastCacheUpdate = 0f;
         private static readonly float CacheUpdateInterval = 2f;
 
         public bool IsAsleep => _isAsleep;
         public float MovementSpeed => _currentMovementSpeed;
         public float SleepEfficiency => Time.time > 0 ? _totalSleepTime / Time.time : 0f;
+
+
+        private void Awake()
+        {
+            if (settings.useRandomMesh && settings.randomMeshes.Length > 0)
+            {
+                SelectRandomMesh();
+            }
+        }
 
         private void Start()
         {
@@ -79,6 +89,7 @@ namespace SoftBody.Scripts
                 {
                     Debug.Log("SoftBodySimulator: Starting initialization...");
                 }
+
                 InitializeComputeShader();
 
                 SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints,
@@ -116,6 +127,21 @@ namespace SoftBody.Scripts
             }
         }
 
+        private void OnEnable()
+        {
+            // Select new random mesh when object is activated (like from pool)
+            if (settings.useRandomMesh && settings.changeOnActivation && settings.randomMeshes.Length > 0)
+            {
+                SelectRandomMesh();
+
+                // Update the visual mesh immediately
+                if (!Application.isPlaying)
+                {
+                    // SetupEditorMesh();
+                }
+            }
+        }
+
         private void InitializeComputeShader()
         {
             if (computeShader == null)
@@ -134,6 +160,7 @@ namespace SoftBody.Scripts
             _kernelDebugAndValidate = computeShader.FindKernel("DebugAndValidateParticles");
             _kernelSolveGeneralCollisions = computeShader.FindKernel("SolveGeneralCollisions");
             _kernelApplyCollisionCorrections = computeShader.FindKernel("ApplyCollisionCorrections");
+            _kernelApplyGlobalDamping = computeShader.FindKernel("ApplyGlobalDamping");
 
             // Verify all kernels were found
             if (_kernelIntegrateAndStore == -1 || _kernelSolveConstraints == -1 || _kernelUpdateMesh == -1 ||
@@ -174,7 +201,8 @@ namespace SoftBody.Scripts
                     }
                     case GraphColouringMethod.Clustering:
                     {
-                        clusters = GraphColouring.CreateClusters(_constraints, _particles.Count,  settings.debugMessages);
+                        clusters = GraphColouring.CreateClusters(_constraints, _particles.Count,
+                            settings.debugMessages);
                         GraphColouring.ColourClusters(clusters, _constraints, settings.debugMessages);
                         break;
                     }
@@ -191,7 +219,8 @@ namespace SoftBody.Scripts
                     }
                     case GraphColouringMethod.Greedy:
                     {
-                        var numColors = GraphColouring.ColourConstraints(_constraints, _particles.Count, settings.debugMessages);
+                        var numColors =
+                            GraphColouring.ColourConstraints(_constraints, _particles.Count, settings.debugMessages);
                         if (settings.debugMessages)
                         {
                             Debug.Log($"Successfully applied graph coloring with {numColors} colours");
@@ -312,6 +341,76 @@ namespace SoftBody.Scripts
             }
         }
 
+        private void SelectRandomMesh()
+        {
+            if (settings.randomMeshes.Length == 0)
+            {
+                Debug.LogWarning($"Random mesh array is empty on {gameObject.name}");
+                return;
+            }
+
+            var randomIndex = Random.Range(0, settings.randomMeshes.Length);
+            var selectedMesh = settings.randomMeshes[randomIndex];
+
+            if (selectedMesh == null)
+            {
+                Debug.LogWarning($"Random mesh at index {randomIndex} is null on {gameObject.name}");
+                return;
+            }
+
+            // Set the selected mesh as the input mesh
+            settings.inputMesh = selectedMesh;
+            settings.useProceduralCube = false; // Ensure we use the mesh, not procedural
+
+            // Update the MeshFilter immediately for visual feedback
+            var meshFilter = GetComponent<MeshFilter>();
+            if (meshFilter != null)
+            {
+                meshFilter.sharedMesh = selectedMesh;
+            }
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Selected random mesh: {selectedMesh.name} for {gameObject.name}");
+            }
+        }
+
+// Public method to manually change mesh (useful for testing)
+        public void ChangeToRandomMesh()
+        {
+            if (settings.useRandomMesh && settings.randomMeshes.Length > 0)
+            {
+                SelectRandomMesh();
+
+                // If we're already running, we need to regenerate the soft body
+                if (Application.isPlaying && _particles != null && _particles.Count > 0)
+                {
+                    RegenerateSoftBody();
+                }
+            }
+        }
+
+        private void RegenerateSoftBody()
+        {
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Regenerating soft body with new mesh: {settings.inputMesh.name}");
+            }
+
+            // Clean up existing buffers
+            ReleaseBuffers();
+
+            // Regenerate with new mesh
+            SoftBodyGenerator.GenerateSoftBody(settings, transform, out _particles, out _constraints,
+                out _volumeConstraints, out _indices, out _weldedUVs);
+
+            ApplyGraphColouring();
+            SetupBuffers();
+
+            // Store new initial state
+            _initialParticles = new List<Particle>(_particles);
+        }
+
         private void SetupRenderMaterial()
         {
             var meshRenderer = GetComponent<MeshRenderer>();
@@ -371,7 +470,7 @@ namespace SoftBody.Scripts
                 Debug.LogError("Particle buffer not initialized!");
                 return;
             }
-            
+
             if (!ValidateBuffers())
             {
                 Debug.LogWarning($"SoftBody '{gameObject.name}' has invalid buffers, skipping frame");
@@ -420,14 +519,19 @@ namespace SoftBody.Scripts
             // Update mesh (async, won't block)
             UpdateMeshFromGPU();
             UpdateMovementTracking();
+
+            if (settings.debugMode && Time.frameCount % 60 == 0)
+            {
+                DebugCollisionInfo();
+            }
         }
 
         private bool ValidateBuffers()
         {
-            return _particleBuffer != null && 
-                   _constraintBuffer != null && 
-                   _vertexBuffer != null && 
-                   _particles != null && 
+            return _particleBuffer != null &&
+                   _constraintBuffer != null &&
+                   _vertexBuffer != null &&
+                   _particles != null &&
                    _particles.Count > 0;
         }
 
@@ -438,6 +542,7 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Skipping substep due to invalid buffers");
                 return;
             }
+
             // Start overall frame timing
             var frameTimer = System.Diagnostics.Stopwatch.StartNew();
             var stepTimer = System.Diagnostics.Stopwatch.StartNew();
@@ -569,6 +674,17 @@ namespace SoftBody.Scripts
             var velocityUpdateTime = (float)stepTimer.Elapsed.TotalMilliseconds;
             SoftBodyProfiler.EndSample("VelocityUpdate");
 
+            // === GLOBAL DAMPING ===
+            SoftBodyProfiler.BeginSample("GlobalDamping");
+
+            computeShader.SetBuffer(_kernelApplyGlobalDamping, Constants.Particles, _particleBuffer);
+            if (particleThreadGroups > 0)
+            {
+                computeShader.Dispatch(_kernelApplyGlobalDamping, particleThreadGroups, 1, 1);
+            }
+
+            SoftBodyProfiler.EndSample("GlobalDamping");
+
             // === MESH UPDATE ===
             if (isLastSubstep)
             {
@@ -597,7 +713,7 @@ namespace SoftBody.Scripts
                     Debug.LogError(
                         $"INSTABILITY DETECTED! NaN Count: {debugData[0]}, Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, First Bad Particle Index: {debugData[3]}");
                 }
-                else if (settings.debugMode) // Only log stability in debug mode
+                else if (settings.debugMode && settings.debugMessages) // Only log stability in debug mode
                 {
                     Debug.Log($"System stable. Max Speed: {debugData[2]:F2}");
                 }
@@ -652,6 +768,9 @@ namespace SoftBody.Scripts
                 _collisionCorrectionsBuffer);
             computeShader.SetBuffer(_kernelApplyCollisionCorrections, Constants.PreviousPositions,
                 _previousPositionsBuffer);
+
+            computeShader.SetBuffer(_kernelApplyGlobalDamping, Constants.Particles, _particleBuffer);
+            computeShader.SetBuffer(_kernelApplyGlobalDamping, Constants.Colliders, _colliderBuffer);
         }
 
 
@@ -665,31 +784,30 @@ namespace SoftBody.Scripts
             computeShader.SetInt(Constants.ConstraintCount, _constraints.Count);
             computeShader.SetFloat(Constants.LambdaDecay, settings.lambdaDecay);
             computeShader.SetInt(Constants.VolumeConstraintCount, _volumeConstraints.Count);
+
+            computeShader.SetFloat(Constants.CollisionCompliance, 0.0001f);
         }
 
         private void UpdateColliders()
         {
+            if (!settings.enableSoftBodyCollisions && !settings.enableCollision)
+            {
+                computeShader.SetInt(Constants.ColliderCount, 0);
+                return;
+            }
+
             _colliders.Clear();
 
-            // Collect all Unity colliders in the scene
-            var allColliders = FindObjectsByType<Collider>(FindObjectsSortMode.None);
-
-            foreach (var col in allColliders)
+            // Add environment colliders first
+            if (settings.enableCollision)
             {
-                if (_colliders.Count >= 64) break;
+                AddEnvironmentColliders();
+            }
 
-                // Skip self and other soft bodies
-                if (col.GetComponent<SoftBodyPhysics>() != null) continue;
-
-                // Skip triggers
-                if (col.isTrigger) continue;
-
-                // Convert Unity collider to SDF representation
-                SDFCollider? sdfCollider = ConvertToSDFCollider(col);
-                if (sdfCollider.HasValue)
-                {
-                    _colliders.Add(sdfCollider.Value);
-                }
+            // Add soft body colliders
+            if (settings.enableSoftBodyCollisions)
+            {
+                AddSoftBodyColliders();
             }
 
             // Upload to GPU
@@ -699,6 +817,71 @@ namespace SoftBody.Scripts
             }
 
             computeShader.SetInt(Constants.ColliderCount, _colliders.Count);
+        }
+
+        private void AddEnvironmentColliders()
+        {
+            var allColliders = FindObjectsByType<Collider>(FindObjectsSortMode.None);
+            foreach (var col in allColliders)
+            {
+                if (_colliders.Count >= 48) break; // Save space for soft bodies
+
+                if (col.GetComponent<SoftBodyPhysics>() != null) continue;
+                if (col.isTrigger) continue;
+
+                SDFCollider? sdfCollider = ConvertToSDFCollider(col);
+                if (sdfCollider.HasValue)
+                {
+                    _colliders.Add(sdfCollider.Value);
+                }
+            }
+        }
+
+        private void AddSoftBodyColliders()
+        {
+            // Update this less frequently for performance
+            if (Time.frameCount % 5 != 0) return; // Only update every 5 frames
+
+            var myPosition = transform.position;
+            var myBounds = GetEstimatedBounds();
+
+            var otherSoftBodies = FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
+            foreach (var other in otherSoftBodies)
+            {
+                if (_colliders.Count >= 64) break;
+                if (other == this || !other.enabled || !other.gameObject.activeInHierarchy) continue;
+
+                var otherPosition = other.transform.position;
+                var distance = Vector3.Distance(myPosition, otherPosition);
+
+                // Only add if close enough
+                if (distance < settings.maxInteractionDistance)
+                {
+                    var otherBounds = other.GetEstimatedBounds();
+                    var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z) *
+                                 settings.interactionStrength;
+
+                    _colliders.Add(SDFCollider.CreateSphere(otherPosition, radius));
+                }
+            }
+        }
+
+        private Bounds GetEstimatedBounds()
+        {
+            if (settings.inputMesh != null && !settings.useProceduralCube)
+            {
+                var bounds = settings.inputMesh.bounds;
+                bounds.size = Vector3.Scale(bounds.size, transform.localScale);
+                bounds.center = transform.position;
+                return bounds;
+            }
+            else if (settings.useProceduralCube)
+            {
+                return new Bounds(transform.position, Vector3.Scale(settings.size, transform.localScale));
+            }
+
+            // Fallback
+            return new Bounds(transform.position, Vector3.one);
         }
 
         private SDFCollider? ConvertToSDFCollider(Collider col)
@@ -715,7 +898,7 @@ namespace SoftBody.Scripts
             //     var planeDistance = Vector3.Dot(planePos, planeNormal);
             //     return SDFCollider.CreatePlane(planeNormal, planeDistance);
             // }
-            
+
             switch (col)
             {
                 case BoxCollider box:
@@ -784,7 +967,7 @@ namespace SoftBody.Scripts
                     if (_readbackRequest.hasError)
                     {
                         Debug.LogWarning("AsyncGPUReadback failed! Skipping frame.");
-                        
+
                         return;
                     }
 
@@ -952,7 +1135,7 @@ namespace SoftBody.Scripts
         private void UpdateMovementTracking()
         {
             var wasMoving = _currentMovementSpeed > settings.stillnessThreshold;
-    
+
             if (wasMoving != _wasPreviouslyMoving)
             {
                 if (settings.showSleepState)
@@ -963,14 +1146,15 @@ namespace SoftBody.Scripts
                             $"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
                     }
                 }
-        
+
                 // Wake up nearby objects when this one starts moving significantly
-                if (wasMoving && _currentMovementSpeed > settings.sleepVelocityThreshold * 4f) // Only for significant movement
+                if (wasMoving &&
+                    _currentMovementSpeed > settings.sleepVelocityThreshold * 4f) // Only for significant movement
                 {
                     WakeUpNearbyObjects();
                 }
             }
-    
+
             _wasPreviouslyMoving = wasMoving;
         }
 
@@ -980,9 +1164,9 @@ namespace SoftBody.Scripts
             if (settings.showSleepState)
             {
 
-                    Debug.Log(
-                        $"{gameObject.name} went to sleep (speed: {_currentMovementSpeed:F4}, inactive for: {_sleepTimer:F1}s)");
-                
+                Debug.Log(
+                    $"{gameObject.name} went to sleep (speed: {_currentMovementSpeed:F4}, inactive for: {_sleepTimer:F1}s)");
+
             }
         }
 
@@ -1003,7 +1187,7 @@ namespace SoftBody.Scripts
             // For more accuracy, you could average particle positions
             return transform.position;
         }
-        
+
         private void OnCollisionEnter(Collision collision)
         {
             if (settings.enableSleepSystem && _isAsleep)
@@ -1019,20 +1203,21 @@ namespace SoftBody.Scripts
                 }
             }
         }
-        
+
         private void WakeUpNearbyObjects(float radius = 0f)
         {
             if (!settings.enableProximityWake)
             {
                 return;
             }
+
             if (Time.frameCount % settings.proximityCheckInterval != 0)
             {
                 return;
             }
-    
+
             if (radius <= 0f) radius = settings.proximityWakeRadius;
-    
+
             // Update static cache periodically
             if (Time.time - _lastCacheUpdate > CacheUpdateInterval)
             {
@@ -1040,15 +1225,15 @@ namespace SoftBody.Scripts
                 _allSoftBodies.AddRange(FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None));
                 _lastCacheUpdate = Time.time;
             }
-    
+
             var position = transform.position;
             var radiusSq = radius * radius;
-    
+
             // Check cached soft bodies
             foreach (var body in _allSoftBodies)
             {
                 if (body == null || body == this || !body.IsAsleep) continue;
-        
+
                 var distanceSq = Vector3.SqrMagnitude(position - body.transform.position);
                 if (distanceSq < radiusSq)
                 {
@@ -1060,7 +1245,7 @@ namespace SoftBody.Scripts
                 }
             }
         }
-        
+
 
         private void OnDestroy()
         {
@@ -1097,12 +1282,30 @@ namespace SoftBody.Scripts
 
         }
 
+        private void DebugCollisionInfo()
+        {
+            Debug.Log($"SoftBody {gameObject.name}: {_colliders.Count} colliders detected");
+
+            if (_colliders.Count > 0)
+            {
+                foreach (var collider in _colliders)
+                {
+                    Debug.Log(
+                        $"  Collider type: {collider.type}, Position: {collider.data1.x}, {collider.data1.y}, {collider.data1.z}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"No colliders found for {gameObject.name} - friction won't work!");
+            }
+        }
+
         private void OnValidate()
         {
             // Regenerate mesh when settings change in editor
             if (Application.isPlaying && _particles != null)
             {
-            
+
                 ReleaseBuffers();
                 SetupBuffers();
                 ResetToInitialState();
@@ -1201,7 +1404,7 @@ namespace SoftBody.Scripts
 
 
         #region Designer Methods
-        
+
         public void SetWorldPosition(Vector3 newPosition)
         {
             if (_particles == null || _particleBuffer == null)
@@ -1220,10 +1423,11 @@ namespace SoftBody.Scripts
             {
                 currentCenter += particle.Position;
             }
+
             currentCenter /= _particles.Count;
-            
+
             var offset = newPosition - currentCenter;
-            
+
             var movedParticles = new Particle[_particles.Count];
             for (var i = 0; i < _particles.Count; i++)
             {
@@ -1231,10 +1435,10 @@ namespace SoftBody.Scripts
                 p.Position += offset;
                 movedParticles[i] = p;
             }
-            
+
             _particleBuffer.SetData(movedParticles);
             _particles = movedParticles.ToList();
-            
+
             transform.position = newPosition;
         }
 
@@ -1246,7 +1450,7 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Cannot reset - initial state not stored or buffers not initialized");
                 return;
             }
-            
+
             if (_initialParticles.Count == 0 || _particles == null || _particles.Count == 0)
             {
                 Debug.LogWarning("Cannot reset - no particles to reset");
@@ -1322,7 +1526,7 @@ namespace SoftBody.Scripts
                 Debug.LogWarning("Cannot poke, physics system not initialized.");
                 return;
             }
-            
+
             WakeUp();
 
             // Get current particle data

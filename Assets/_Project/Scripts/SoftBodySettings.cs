@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace SoftBody.Scripts
@@ -8,6 +9,12 @@ namespace SoftBody.Scripts
         [Header("Mesh Input")]
         public Mesh inputMesh;
         public bool useProceduralCube = true; 
+        [Header("Random Mesh Selection")]
+        public bool useRandomMesh = false;
+        [Tooltip("Array of meshes to randomly choose from")]
+        public Mesh[] randomMeshes = Array.Empty<Mesh>();
+        [Tooltip("Choose a new random mesh each time the object is activated")]
+        public bool changeOnActivation = true;
         [Header("High Poly Tetrahedralization")]
         public bool useTetrahedralizationForHighPoly = true;
         public int maxSurfaceVerticesBeforeTetra = 500;
@@ -83,6 +90,13 @@ namespace SoftBody.Scripts
         [Header("Interaction")]
         public bool enableCollision = true;
         public LayerMask collisionLayers = -1;
+        
+        [Header("Soft Body Interactions")]
+        public bool enableSoftBodyCollisions = true;
+        [Tooltip("How much soft bodies push each other (0 = no interaction, 1 = full physics)")]
+        public float interactionStrength = 0.8f;
+        [Tooltip("Maximum distance to detect other soft bodies")]
+        public float maxInteractionDistance = 5f;
         
         [Header("Debug Options")]
         public bool SkipUpdate = false;

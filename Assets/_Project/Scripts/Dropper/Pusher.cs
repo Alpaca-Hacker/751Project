@@ -1,359 +1,334 @@
-
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace SoftBody.Scripts
 {
     public class Pusher : MonoBehaviour
-   {
+    {
         [Header("Push Settings")]
-        public float pushForce = 5f;
-        public float influenceRadius = 1f;
+        public float pushForce = 8f;
+        public float carryForce = 15f; 
+        public float sideForce = 2f;
         
-        [Header("Push Direction")]
-        public Vector3 pushDirection = Vector3.back; // -Z
+        [Header("Direction")]
+        [Tooltip("Which direction should the pusher push? Auto-detect or manual")]
+        public bool autoDetectDirection = true;
+        public Vector3 manualPushDirection = Vector3.back;
         
-        [Header("Influence Area")]
-        public float forwardOffset = 0.5f;
-        public float widthPadding = 0.5f;
-        public float heightPadding = 1f;
+        [Header("Detection")]
+        public float frontDetectionDistance = 1.5f;
+        public float topDetectionHeight = 0.8f;
+        public float sideDetectionWidth = 1.2f;
         
-        [Header("Performance")]
-        [Tooltip("How often to search for soft bodies (per second)")]
-        public float detectionRate = 10f;
+        [Header("Force Zones")]
+        [Tooltip("How far in front to start pushing")]
+        public float pushZoneDepth = 1f;
+        [Tooltip("How high above pusher to detect toys")]
+        public float carryZoneHeight = 0.5f;
+        
+        [Header("Physics")]
+        public float maxPushSpeed = 2f;
+        public bool enableCarrying = true;
+        public bool enableGentlePushing = true;
         
         [Header("Debug")]
-        public bool showDebugInfo = true;
-        public Color gizmoColor = new Color(1f, 1f, 0f, 0.3f);
+        public bool showGizmos = true;
+        public Color pushZoneColour = new Color(1f, 0f, 0f, 0.3f);
+        public Color carryZoneColour = new Color(0f, 1f, 0f, 0.3f);
         
-        private Vector3 _previousPosition;
         private Vector3 _velocity;
+        private Vector3 _lastPosition;
+        private List<SoftBodyPhysics> _detectedToys = new();
         private Bounds _pusherBounds;
-        private float _nextDetectionTime;
-        private List<SoftBodyPhysics> _nearbyBodies = new ();
-
+        
         private void Start()
         {
-            _previousPosition = transform.position;
-            
-            var rendererComponent = GetComponent<Renderer>();
-            if (rendererComponent != null)
-            {
-                _pusherBounds = rendererComponent.bounds;
-            }
-            
-            pushDirection.Normalize();
-        }
-
-        private void FixedUpdate()
-        {
-            // Calculate pusher velocity
-            _velocity = (transform.position - _previousPosition) / Time.fixedDeltaTime;
-            _previousPosition = transform.position;
-            
-            // Check if moving in push direction
-            var pushVelocity = Vector3.Dot(_velocity, pushDirection);
-            
-            if (pushVelocity > 0.01f)
-            {
-                // Periodically update the list of nearby bodies
-                if (Time.time >= _nextDetectionTime)
-                {
-                    DetectNearbyBodies();
-                    _nextDetectionTime = Time.time + 1f / detectionRate;
-                }
-                
-                // Apply forces to detected bodies
-                ApplyPushForces();
-            }
-        }
-
-        private void DetectNearbyBodies()
-       {
-    _nearbyBodies.Clear();
+            _lastPosition = transform.position;
     
-    // Get influence bounds
-    var boxCenter = GetInfluenceBoxCenter();
-    var boxSize = GetInfluenceBoxSize();
-    var influenceBounds = new Bounds(boxCenter, boxSize);
-    
-    // Find all soft bodies
-    var allSoftBodies = FindObjectsOfType<SoftBodyPhysics>();
-    
-    foreach (var softBody in allSoftBodies)
-    {
-        if (softBody.enabled && softBody.gameObject.activeInHierarchy)
-        {
-            // Get the actual mesh bounds of the soft body
-            var meshFilter = softBody.GetComponent<MeshFilter>();
-            if (meshFilter != null && meshFilter.mesh != null)
+            // Get pusher bounds
+            var renderer = GetComponent<Renderer>();
+            if (renderer != null)
             {
-                // Convert mesh bounds to world space
-                var worldBounds = meshFilter.mesh.bounds;
-                worldBounds.center = softBody.transform.TransformPoint(worldBounds.center);
-                worldBounds.size = Vector3.Scale(worldBounds.size, softBody.transform.lossyScale);
-                
-                // Only add if bounds actually intersect
-                if (influenceBounds.Intersects(worldBounds))
-                {
-                    // Additional check: how much overlap?
-                    var overlapAmount = CalculateOverlapAmount(influenceBounds, worldBounds);
-                    
-                    if (overlapAmount > 0.1f) // Only if significantly overlapping
-                    {
-                        _nearbyBodies.Add(softBody);
-                        
-                        if (showDebugInfo)
-                        {
-                            Debug.Log($"Detected {softBody.name} with {overlapAmount:F1} overlap");
-                        }
-                    }
-                }
+                _pusherBounds = renderer.bounds;
             }
             else
             {
-                // Fallback for bodies without mesh
-                var distance = Vector3.Distance(softBody.transform.position, boxCenter);
-                var maxDistance = influenceRadius * 0.5f; // Much stricter
+                _pusherBounds = new Bounds(transform.position, Vector3.one);
+            }
+    
+            // Configure colliders for platform behavior
+            var colliders = GetComponents<Collider>();
+            foreach (var col in colliders)
+            {
+                col.enabled = true;
+                col.isTrigger = false;
                 
-                if (distance < maxDistance)
+                if (col.material == null)
                 {
-                    _nearbyBodies.Add(softBody);
+                    var physMat = new PhysicsMaterial("PusherSurface");
+                    physMat.dynamicFriction = 0.8f;
+                    physMat.staticFriction = 0.9f;
+                    physMat.bounciness = 0.1f;
+                    physMat.frictionCombine = PhysicsMaterialCombine.Maximum;
+                    physMat.bounceCombine = PhysicsMaterialCombine.Minimum;
+                    col.material = physMat;
+                }
+        
+                Debug.Log($"Configured collider on pusher: {col.GetType().Name}");
+            }
+    
+            // Ensure we have a rigidbody for the platform
+            var rb = GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = gameObject.AddComponent<Rigidbody>();
+            }
+    
+            // Configure rigidbody for kinematic movement
+            rb.isKinematic = true;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+        }
+        
+        private void FixedUpdate()
+        {
+            // Calculate pusher velocity
+            _velocity = (transform.position - _lastPosition) / Time.fixedDeltaTime;
+            _lastPosition = transform.position;
+            
+            // Detect toys in various zones
+            DetectToysInZones();
+            
+            // Apply forces based on pusher movement and toy positions
+            ApplyPusherForces();
+        }
+        
+        private void DetectToysInZones()
+        {
+            _detectedToys.Clear();
+            
+            var allToys = FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
+            
+            foreach (var toy in allToys)
+            {
+                if (!toy.enabled || !toy.gameObject.activeInHierarchy) continue;
+                
+                var toyPos = toy.transform.position;
+                var pusherPos = transform.position;
+                var bounds = _pusherBounds;
+                
+                // Check if toy is in any of our interaction zones
+                bool inPushZone = IsInPushZone(toyPos, pusherPos, bounds);
+                bool inCarryZone = IsInCarryZone(toyPos, pusherPos, bounds);
+                bool inSideZone = IsInSideZone(toyPos, pusherPos, bounds);
+                
+                if (inPushZone || inCarryZone || inSideZone)
+                {
+                    _detectedToys.Add(toy);
                 }
             }
         }
-    }
-    
-    if (showDebugInfo && _nearbyBodies.Count > 0)
-    {
-        Debug.Log($"Pusher detected {_nearbyBodies.Count} soft bodies in range");
-    }
-}
-
-// Helper method to calculate overlap amount
-float CalculateOverlapAmount(Bounds a, Bounds b)
-{
-    // Calculate how deeply B penetrates into A
-    var aMin = a.min;
-    var aMax = a.max;
-    var bMin = b.min;
-    var bMax = b.max;
-    
-    // Find overlap on each axis
-    var overlapX = Mathf.Min(aMax.x, bMax.x) - Mathf.Max(aMin.x, bMin.x);
-    var overlapY = Mathf.Min(aMax.y, bMax.y) - Mathf.Max(aMin.y, bMin.y);
-    var overlapZ = Mathf.Min(aMax.z, bMax.z) - Mathf.Max(aMin.z, bMin.z);
-    
-    if (overlapX > 0 && overlapY > 0 && overlapZ > 0)
-    {
-        // Return the minimum overlap (most relevant for pushing)
-        return Mathf.Min(overlapX, overlapY, overlapZ);
-    }
-    
-    return 0;
-}
-
-// Updated ApplyPushForces() with distance-based force falloff
-       void ApplyPushForces()
-       {
-           var pushedCount = 0;
-
-           var influenceCenter = GetInfluenceBoxCenter();
-
-           foreach (var softBody in _nearbyBodies)
-           {
-               if (softBody == null) continue;
-
-               // Calculate actual distance from influence zone
-               var closestPoint = GetClosestPointToSoftBody(softBody, influenceCenter);
-               var distance = Vector3.Distance(closestPoint, influenceCenter);
-
-               // Only push if really close enough
-               if (distance > influenceRadius)
-               {
-                   continue; // Skip this body
-               }
-
-               // Wake sleeping bodies
-               if (softBody.IsAsleep)
-               {
-                   softBody.WakeUp();
-                   Debug.Log($"Woke up {softBody.name}");
-               }
-
-               // Calculate force with falloff based on actual distance
-               var distanceFactor = 1f - (distance / influenceRadius);
-               distanceFactor = Mathf.Clamp01(distanceFactor);
-
-               // Only apply force if factor is significant
-               if (distanceFactor < 0.1f) continue;
-
-               // Calculate push direction
-               var toTarget = softBody.transform.position - transform.position;
-               var lateralOffset = toTarget.x / (_pusherBounds.size.x + widthPadding);
-
-               var pushDir = pushDirection;
-               pushDir += Vector3.right * (lateralOffset * 0.2f);
-               pushDir += Vector3.up * 0.1f;
-               pushDir.Normalize();
-
-               // Apply force scaled by distance
-               var pushSpeed = Vector3.Dot(_velocity, pushDirection);
-               var forceMagnitude = pushForce * pushSpeed * distanceFactor; // Scale by distance
-
-               // Apply at closest point for most accurate physics
-               softBody.ApplyContinuousForce(closestPoint, pushDir * forceMagnitude, 1.0f);
-
-               pushedCount++;
-
-               if (showDebugInfo)
-               {
-                   Debug.Log($"Pushing {softBody.name} at distance {distance:F2} with factor {distanceFactor:F2}");
-               }
-           }
-
-           if (showDebugInfo && pushedCount > 0)
-           {
-               Debug.Log($"Actually pushing {pushedCount} bodies");
-           }
-       }
-
-// Helper to find closest point on soft body to influence center
-       Vector3 GetClosestPointToSoftBody(SoftBodyPhysics softBody, Vector3 point)
-       {
-           // Use mesh bounds as approximation
-           var meshFilter = softBody.GetComponent<MeshFilter>();
-           if (meshFilter && meshFilter.mesh)
-           {
-               var worldBounds = meshFilter.mesh.bounds;
-               worldBounds.center = softBody.transform.TransformPoint(worldBounds.center);
-               worldBounds.size = Vector3.Scale(worldBounds.size, softBody.transform.lossyScale);
-
-               return worldBounds.ClosestPoint(point);
-           }
-
-           // Fallback to transform position
-           return softBody.transform.position;
-       }
-       
-        private Vector3 GetInfluenceBoxCenter()
+        
+        
+        private bool IsInCarryZone(Vector3 toyPos, Vector3 pusherPos, Bounds bounds)
         {
-            var boxOffset = _pusherBounds.extents.z + forwardOffset + influenceRadius * 0.5f;
-            return transform.position + pushDirection * boxOffset;
+            // Zone on top of pusher for carrying
+            var topCenter = pusherPos + Vector3.up * (bounds.extents.y + carryZoneHeight * 0.5f);
+            var carryBounds = new Bounds(topCenter, new Vector3(
+                bounds.size.x * 0.9f, // Slightly smaller than pusher
+                carryZoneHeight,
+                bounds.size.z * 0.9f
+            ));
+            
+            return carryBounds.Contains(toyPos);
         }
         
-        private Vector3 GetInfluenceBoxSize()
+        private bool IsInSideZone(Vector3 toyPos, Vector3 pusherPos, Bounds bounds)
         {
-            return new Vector3(
-                _pusherBounds.size.x + widthPadding * 2f,
-                _pusherBounds.size.y + heightPadding * 2f,
-                influenceRadius
-            );
+            // Zones on the sides for gentle nudging
+            float sideDist = Mathf.Abs(toyPos.x - pusherPos.x);
+            float frontDist = toyPos.z - pusherPos.z;
+            
+            return sideDist > bounds.extents.x && 
+                   sideDist < bounds.extents.x + sideDetectionWidth &&
+                   frontDist > -bounds.extents.z &&
+                   frontDist < bounds.extents.z + frontDetectionDistance;
+        }
+        
+        private void ApplyPusherForces()
+        {
+            foreach (var toy in _detectedToys)
+            {
+                if (toy.IsAsleep) toy.WakeUp();
+                
+                var toyPos = toy.transform.position;
+                var pusherPos = transform.position;
+                var relativePos = toyPos - pusherPos;
+                
+                // Determine which zone the toy is in and apply appropriate forces
+                if (enableCarrying && IsInCarryZone(toyPos, pusherPos, _pusherBounds))
+                {
+                    ApplyCarryingForce(toy, relativePos);
+                }
+                else if (enableGentlePushing && IsInPushZone(toyPos, pusherPos, _pusherBounds))
+                {
+                    ApplyPushingForce(toy, relativePos);
+                }
+                else if (IsInSideZone(toyPos, pusherPos, _pusherBounds))
+                {
+                    ApplySideForce(toy, relativePos);
+                }
+            }
+        }
+        
+        private void ApplySideForce(SoftBodyPhysics toy, Vector3 relativePos)
+        {
+            // Gentle side nudging to move toys away from pusher edges
+            var sideDirection = Vector3.Cross(transform.forward, Vector3.up);
+            if (relativePos.x < 0) sideDirection = -sideDirection;
+            
+            var force = sideDirection * sideForce;
+            toy.ApplyContinuousForce(toy.transform.position, force, 0.8f);
+        }
+        
+        private Vector3 GetPushDirection()
+        {
+            if (autoDetectDirection)
+            {
+                // Use the direction the pusher is actually moving
+                if (_velocity.magnitude > 0.01f)
+                {
+                    return _velocity.normalized;
+                }
+                // Fallback to transform forward
+                return transform.forward;
+            }
+            return manualPushDirection.normalized;
         }
 
+        private bool IsInPushZone(Vector3 toyPos, Vector3 pusherPos, Bounds bounds)
+        {
+            // Get the actual push direction
+            var pushDir = GetPushDirection();
+    
+            // Zone in the direction we're pushing
+            var frontCenter = pusherPos + pushDir * (bounds.extents.z + pushZoneDepth * 0.5f);
+            var pushBounds = new Bounds(frontCenter, new Vector3(
+                bounds.size.x + sideDetectionWidth,
+                bounds.size.y,
+                pushZoneDepth
+            ));
+    
+            return pushBounds.Contains(toyPos);
+        }
+
+        private void ApplyCarryingForce(SoftBodyPhysics toy, Vector3 relativePos)
+        {
+            var pusherMovement = _velocity;
+    
+            // Moderate horizontal forces - not too weak, not too strong
+            var horizontalForce = new Vector3(pusherMovement.x, 0, pusherMovement.z) * (carryForce * 0.5f); // Reduced from 2f
+    
+            var toyBounds = toy.GetComponent<MeshFilter>()?.mesh?.bounds ?? new Bounds(Vector3.zero, Vector3.one);
+            var toyCenter = toy.transform.position;
+    
+            // Apply to fewer points with gentler forces
+            toy.ApplyContinuousForce(toyCenter, horizontalForce, 0.8f);
+    
+            // Very gentle upward support
+            var supportForce = Vector3.up * (carryForce * 0.1f); // Reduced from 0.3f
+            toy.ApplyContinuousForce(toyCenter, supportForce, 0.3f);
+        }
+
+        private void ApplyPushingForce(SoftBodyPhysics toy, Vector3 relativePos)
+        {
+            var pushDirection = GetPushDirection();
+    
+            var pusherSpeed = Vector3.Dot(_velocity, pushDirection);
+            var forceMultiplier = Mathf.Clamp01(pusherSpeed / maxPushSpeed);
+    
+            if (forceMultiplier > 0.05f)
+            {
+                var force = pushDirection * (pushForce * 1.2f * forceMultiplier); // Reduced from 3f
+        
+                var toyCenter = toy.transform.position;
+        
+                // Single application point with moderate force
+                toy.ApplyContinuousForce(toyCenter, force, 1.0f);
+            }
+        }
+        
         private void OnDrawGizmos()
         {
-            // Update bounds if in editor
+            if (!showGizmos) return;
+    
+            var bounds = _pusherBounds;
             if (!Application.isPlaying)
             {
-                var component = GetComponent<Renderer>();
-                if (component != null)
-                {
-                    _pusherBounds = component.bounds;
-                }
-                else
-                {
-                    _pusherBounds = new Bounds(Vector3.zero, transform.localScale);
-                }
-                
-                // Ensure push direction is normalized
-                if (pushDirection.magnitude > 0)
-                    pushDirection.Normalize();
+                var renderer = GetComponent<Renderer>();
+                if (renderer != null) bounds = renderer.bounds;
             }
-            
-            // Draw influence area
-            Gizmos.color = gizmoColor;
-            var boxCenter = GetInfluenceBoxCenter();
-            var boxSize = GetInfluenceBoxSize();
-            
-            // Transform to world space for rendering
-            var oldMatrix = Gizmos.matrix;
-            Gizmos.matrix = Matrix4x4.TRS(boxCenter, transform.rotation, Vector3.one);
-            
-            // Solid box
-            Gizmos.DrawCube(Vector3.zero, boxSize);
-            
-            // Wireframe for clarity
-            Gizmos.color = new Color(gizmoColor.r, gizmoColor.g, gizmoColor.b, 1f);
-            Gizmos.DrawWireCube(Vector3.zero, boxSize);
-            
-            Gizmos.matrix = oldMatrix;
-            
-            // Draw push direction arrow
-            if (showDebugInfo)
+    
+            // Get push direction
+            var pushDir = Vector3.forward; // Default
+            if (Application.isPlaying)
             {
-                Gizmos.color = Color.red;
-                var arrowStart = transform.position;
-                var arrowEnd = arrowStart + pushDirection * 2f;
-                Gizmos.DrawLine(arrowStart, arrowEnd);
-                
-                // Draw cone for arrow head
-                DrawArrowHead(arrowEnd, pushDirection);
+                pushDir = GetPushDirection();
             }
+            else if (!autoDetectDirection)
+            {
+                pushDir = manualPushDirection.normalized;
+            }
+    
+            // Draw push zone
+            Gizmos.color = pushZoneColour;
+            var pushCenter = transform.position + pushDir * (bounds.extents.z + pushZoneDepth * 0.5f);
+            var pushSize = new Vector3(bounds.size.x + sideDetectionWidth, bounds.size.y, pushZoneDepth);
+            Gizmos.DrawCube(pushCenter, pushSize);
+    
+            // Draw carry zone (on top)
+            if (enableCarrying)
+            {
+                Gizmos.color = carryZoneColour;
+                var carryCenter = transform.position + Vector3.up * (bounds.extents.y + carryZoneHeight * 0.5f);
+                var carrySize = new Vector3(bounds.size.x * 0.9f, carryZoneHeight, bounds.size.z * 0.9f);
+                Gizmos.DrawCube(carryCenter, carrySize);
+            }
+    
+            // Draw directional arrow showing ACTUAL push direction
+            Gizmos.color = Color.red;
+            var arrowStart = transform.position;
+            var arrowEnd = arrowStart + pushDir * 2f;
+            Gizmos.DrawLine(arrowStart, arrowEnd);
+    
+            // Draw arrow head
+            var right = Vector3.Cross(pushDir, Vector3.up) * 0.3f;
+            Gizmos.DrawLine(arrowEnd, arrowEnd - pushDir * 0.3f + right);
+            Gizmos.DrawLine(arrowEnd, arrowEnd - pushDir * 0.3f - right);
+    
+            // Label the direction in scene view
+#if UNITY_EDITOR
+            UnityEditor.Handles.Label(arrowEnd, $"Push: {pushDir:F2}");
+#endif
         }
         
-        private void DrawArrowHead(Vector3 tip, Vector3 direction)
-        {
-            var coneSize = 0.2f;
-            var coneBase = tip - direction * coneSize;
-            
-            // Create perpendicular vectors
-            var perp1 = Vector3.Cross(direction, Vector3.up);
-            if (perp1.magnitude < 0.1f)
-                perp1 = Vector3.Cross(direction, Vector3.right);
-            perp1.Normalize();
-            
-            var perp2 = Vector3.Cross(direction, perp1).normalized;
-            
-            // Draw cone
-            Gizmos.DrawLine(tip, coneBase + perp1 * coneSize);
-            Gizmos.DrawLine(tip, coneBase - perp1 * coneSize);
-            Gizmos.DrawLine(tip, coneBase + perp2 * coneSize);
-            Gizmos.DrawLine(tip, coneBase - perp2 * coneSize);
-        }
-
         private void OnDrawGizmosSelected()
         {
-            // Show more detail when selected
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireCube(transform.position, _pusherBounds.size);
+            if (!Application.isPlaying) return;
             
-            // Show current velocity when playing
-            if (Application.isPlaying && showDebugInfo)
+            // Show detected toys
+            Gizmos.color = Color.yellow;
+            foreach (var toy in _detectedToys)
             {
-                Gizmos.color = Color.magenta;
-                foreach (var body in _nearbyBodies)
+                if (toy != null)
                 {
-                    if (body != null)
-                    {
-                        // Draw line from pusher to detected body
-                        Gizmos.DrawLine(transform.position, body.transform.position);
-                
-                        // Draw sphere at detection point
-                        Gizmos.DrawWireSphere(body.transform.position, 0.1f);
-                    }
+                    Gizmos.DrawWireSphere(toy.transform.position, 0.2f);
+                    Gizmos.DrawLine(transform.position, toy.transform.position);
                 }
             }
             
-            // Show labels
-            #if UNITY_EDITOR
-            UnityEditor.Handles.Label(
-                GetInfluenceBoxCenter() + Vector3.up, 
-                $"Push Force: {pushForce}\n" +
-                $"Influence: {influenceRadius}m\n" +
-                $"Direction: {pushDirection}"
-            );
-            #endif
+            // Show velocity
+            Gizmos.color = Color.red;
+            Gizmos.DrawRay(transform.position, _velocity);
         }
     }
 }

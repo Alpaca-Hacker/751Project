@@ -6917,14 +6917,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pushForce: 5
-  influenceRadius: 0.5
-  pushDirection: {x: 0, y: 0, z: -1}
-  forwardOffset: -0.2
-  widthPadding: 0.5
-  heightPadding: 0
-  detectionRate: 10
-  showDebugInfo: 1
-  gizmoColor: {r: 1, g: 1, b: 0, a: 0.3}
+  carryForce: 15
+  sideForce: 2
+  autoDetectDirection: 0
+  manualPushDirection: {x: 0, y: 0, z: -1}
+  frontDetectionDistance: 0.27
+  topDetectionHeight: 0.8
+  sideDetectionWidth: 1.2
+  pushZoneDepth: 1
+  carryZoneHeight: 0.5
+  maxPushSpeed: 2
+  enableCarrying: 1
+  enableGentlePushing: 1
+  showGizmos: 1
+  pushZoneColour: {r: 1, g: 0, b: 0, a: 0.3}
+  carryZoneColour: {r: 0, g: 1, b: 0, a: 0.3}
 --- !u!65 &1739524722
 BoxCollider:
   m_ObjectHideFlags: 0

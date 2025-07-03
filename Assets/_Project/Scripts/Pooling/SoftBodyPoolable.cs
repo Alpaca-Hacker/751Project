@@ -35,6 +35,11 @@ namespace SoftBody.Scripts.Pooling
 
             if (_softBody != null)
             {
+                if (_softBody.settings.useRandomMesh && _softBody.settings.changeOnActivation)
+                {
+                    _softBody.ChangeToRandomMesh();
+                }
+                
                 if (resetPhysicsStateOnGet && _softBody.ParticleCount > 0)
                 {
                     var pos = _softBody.transform.position;
@@ -78,7 +83,10 @@ namespace SoftBody.Scripts.Pooling
 
         private void Update()
         {
-            if (!gameObject.activeInHierarchy) return;
+            if (!gameObject.activeInHierarchy)
+            {
+                return;
+            }
 
             _activeTime += Time.deltaTime;
 

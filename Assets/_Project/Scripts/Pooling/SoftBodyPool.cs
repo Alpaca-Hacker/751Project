@@ -124,7 +124,7 @@ namespace SoftBody.Scripts
         public GameObject GetObject()
         {
             // Try to grow pool if needed
-            if (_availableObjects.Count == 0)
+            if (_availableObjects.Count <= 1)
             {
                 if (allowGrowth && _allPooledObjects.Count < maxSize)
                 {

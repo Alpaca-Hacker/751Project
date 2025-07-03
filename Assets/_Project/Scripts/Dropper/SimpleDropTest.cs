@@ -77,6 +77,7 @@ namespace SoftBody.Scripts.Dropper
 
             while (true)
             {
+                Debug.Log("Spawning toys... Current count: " + _currentToyCount);
                 if (_currentToyCount < maxToys)
                 {
                     try 
@@ -116,8 +117,10 @@ namespace SoftBody.Scripts.Dropper
                 return;
             }
             
+            Debug.Log("Spawning toy: " + toy.name);
+            
             var targetPos = dropZone.position + new Vector3(
-                Random.Range(-2f, 2f),
+                Random.Range(-1f, 1f),
                 Random.Range(0f, 1f),
                 Random.Range(-0.5f, 0.5f)
             );
@@ -140,8 +143,7 @@ namespace SoftBody.Scripts.Dropper
             poolable?.OnGetFromPool();
             
             _currentToyCount++;
-    
-            // Use a different tracking approach to avoid memory leaks
+            
             var tracker = toy.GetComponent<ToyTracker>();
             if (tracker == null)
             {
