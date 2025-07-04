@@ -191,11 +191,9 @@ namespace SoftBody.Scripts
                 if (softBody.enabled)
                 {
                     totalParticles += softBody.ParticleCount;
-                    // You might need to add a public property for constraint count
                      totalConstraints += softBody.ConstraintCount;
 
-                    // Estimate memory usage (rough calculation)
-                    totalMemory += softBody.ParticleCount * 64f / (1024f * 1024f); // ~64 bytes per particle
+                     totalMemory += softBody.MemoryUsageMB;
                 }
             }
             
@@ -221,7 +219,7 @@ namespace SoftBody.Scripts
 
             if (memoryUsageText != null)
             {
-                memoryUsageText.text = $"{totalMemory:F1} MB";
+                memoryUsageText.text = $"{totalMemory:F2} MB";
             }
         }
 
@@ -294,8 +292,7 @@ namespace SoftBody.Scripts
                     {
                         dampenedCount++;
                     }
-
-                    totalSleepEfficiency += softBody.SleepEfficiency;
+                    
                 }
             }
 

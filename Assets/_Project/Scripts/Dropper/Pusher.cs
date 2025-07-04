@@ -117,9 +117,9 @@ namespace SoftBody.Scripts
                 var bounds = _pusherBounds;
                 
                 // Check if toy is in any of our interaction zones
-                bool inPushZone = IsInPushZone(toyPos, pusherPos, bounds);
-                bool inCarryZone = IsInCarryZone(toyPos, pusherPos, bounds);
-                bool inSideZone = IsInSideZone(toyPos, pusherPos, bounds);
+                var inPushZone = IsInPushZone(toyPos, pusherPos, bounds);
+                var inCarryZone = IsInCarryZone(toyPos, pusherPos, bounds);
+                var inSideZone = IsInSideZone(toyPos, pusherPos, bounds);
                 
                 if (inPushZone || inCarryZone || inSideZone)
                 {
@@ -145,8 +145,8 @@ namespace SoftBody.Scripts
         private bool IsInSideZone(Vector3 toyPos, Vector3 pusherPos, Bounds bounds)
         {
             // Zones on the sides for gentle nudging
-            float sideDist = Mathf.Abs(toyPos.x - pusherPos.x);
-            float frontDist = toyPos.z - pusherPos.z;
+            var sideDist = Mathf.Abs(toyPos.x - pusherPos.x);
+            var frontDist = toyPos.z - pusherPos.z;
             
             return sideDist > bounds.extents.x && 
                    sideDist < bounds.extents.x + sideDetectionWidth &&
@@ -158,7 +158,10 @@ namespace SoftBody.Scripts
         {
             foreach (var toy in _detectedToys)
             {
-                if (toy.IsAsleep) toy.WakeUp();
+                if (toy.IsAsleep)
+                {
+                    toy.WakeUp();
+                }
                 
                 var toyPos = toy.transform.position;
                 var pusherPos = transform.position;

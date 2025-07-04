@@ -37,7 +37,7 @@ namespace SoftBody.Scripts.Pooling
             {
                 if (_softBody.settings.useRandomMesh && _softBody.settings.changeOnActivation)
                 {
-                    _softBody.ChangeToRandomMesh();
+                    _softBody.RegenerateWithRandomMesh();
                 }
                 
                 if (resetPhysicsStateOnGet && _softBody.ParticleCount > 0)
