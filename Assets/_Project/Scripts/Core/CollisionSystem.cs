@@ -167,7 +167,19 @@ namespace SoftBody.Scripts.Core
 
         private SDFCollider? ConvertToSDFCollider(Collider col)
         {
-            
+            if (col.CompareTag("Floor"))
+            {
+                // Always treat floor as a plane
+                var planeNormal = col.transform.up;
+                var planePos = col.transform.position;
+
+                // Offset slightly up to account for collider thickness
+                planePos += planeNormal * 0.01f;
+
+                var planeDistance = Vector3.Dot(planePos, planeNormal);
+                return SDFCollider.CreatePlane(planeNormal, planeDistance);
+            }
+
             switch (col)
             {
                 case BoxCollider box:
