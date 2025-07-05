@@ -256,6 +256,9 @@ MonoBehaviour:
     collisionLayers:
       serializedVersion: 2
       m_Bits: 4294967295
+    enableSoftBodyCollisions: 1
+    interactionStrength: 0.8
+    maxInteractionDistance: 5
     SkipUpdate: 0
     debugMode: 0
     graphColouringMethod: 2

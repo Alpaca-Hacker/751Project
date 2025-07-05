@@ -36,6 +36,7 @@ namespace SoftBody.Scripts.Core
 
                 // Generate soft body data
                 result.SoftBodyData = GenerateSoftBodyData();
+                
                 if (!result.SoftBodyData.IsValid)
                 {
                     result.Success = false;
@@ -45,12 +46,12 @@ namespace SoftBody.Scripts.Core
 
                 // Apply graph colouring
                 ApplyGraphColouring(result.SoftBodyData.Constraints);
+                
+                // Initialize core systems
+                InitializeSystems(computeShader, result);
 
                 // Store initial state
                 result.InitialParticles = new List<Particle>(result.SoftBodyData.Particles);
-
-                // Initialize core systems
-                InitializeSystems(computeShader, result);
 
                 result.Success = true;
 
@@ -130,6 +131,16 @@ namespace SoftBody.Scripts.Core
     
             SoftBodyGenerator.GenerateSoftBody(_settings, _transform, 
                 out particles, out constraints, out volumeConstraints, out indices, out weldedUVs);
+            
+            for (var i = 0; i < constraints.Count; i++)
+            {
+                var c = constraints[i];
+                if (c.RestLength <= 0f)
+                {
+                    c.RestLength = Vector3.Distance(particles[c.ParticleA].Position, particles[c.ParticleB].Position);
+                    constraints[i] = c;
+                }
+            }
 
             return new SoftBodyData
             {

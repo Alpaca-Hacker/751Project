@@ -660,8 +660,8 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
             float3 tangentVel = vel - normalVel;
             
             // Moderate energy loss - enough to prevent bouncing, not too much
-            normalVel *= 0.2; // 80% energy loss
-            tangentVel *= 0.7; // Some friction but not too much
+            normalVel *= 0.05; 
+            tangentVel *= 1.0 - 0.8;
             
             p.velocity.xyz = normalVel + tangentVel;
         }

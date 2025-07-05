@@ -44,14 +44,25 @@ namespace SoftBody.Scripts
             // Apply stuffing mode if enabled
             if (settings.enableStuffingMode)
             {
-                Debug.Log("Applying stuffing mode...");
                 StuffingGenerator.CreateStuffedBodyStructure(result.Particles, result.Constraints, 
                     result.VolumeConstraints, settings, transform);
-                Debug.Log($"After stuffing: {result.Particles.Count} particles, {result.Constraints.Count} constraints, {result.VolumeConstraints.Count} volume constraints");
             }
-            else
+            
+            for (var i = 0; i < result.Constraints.Count; i++)
             {
-                Debug.Log("Stuffing mode not enabled, skipping...");
+                var c = result.Constraints[i];
+                var restLength = Vector3.Distance(result.Particles[c.ParticleA].Position, 
+                    result.Particles[c.ParticleB].Position);
+    
+                if (restLength < 0.001f)
+                {
+                    result.Constraints.RemoveAt(i);
+                    i--;
+                    continue;
+                }
+    
+                c.RestLength = restLength;
+                result.Constraints[i] = c;
             }
 
             // Final validation and cleanup

@@ -26,77 +26,14 @@ namespace SoftBody.Scripts.Generation
             var (weldedVertices, weldedTriangles, vertexMapping) =
                 MeshUtilities.WeldVertices(mesh.vertices, mesh.triangles, settings);
 
-            // Create surface particles
+            // Step 1: Create ALL particles (surface + interior) FIRST
             var particles = new List<Particle>();
-            var surfaceParticleIndices = CreateSurfaceParticles(weldedVertices, particles, settings, transform);
+            var surfaceParticleIndices = new List<int>();
 
-            // Generate interior points
-            var interiorPoints = InteriorPointGenerator.GenerateForMesh(
-                weldedVertices, weldedTriangles, settings.interiorPointDensity, settings.debugMessages);
-
-            var interiorParticleIndices = CreateInteriorParticles(interiorPoints, particles, settings, transform);
-
-            // *** CRITICAL: Generate constraints AFTER all particles are created ***
-            // For surface constraints, we need to pass only the surface triangle data
-            var surfaceConstraints = ConstraintGenerator.GenerateFromMesh(
-                particles.Take(surfaceParticleIndices.Count).ToList(), // Only surface particles
-                weldedTriangles,
-                settings);
-
-            // Add interior and connection constraints
-            var allConstraints = new List<Constraint>(surfaceConstraints);
-            AddInteriorConstraints(interiorParticleIndices, particles, allConstraints, settings);
-            AddSurfaceToInteriorConstraints(surfaceParticleIndices, interiorParticleIndices, particles, allConstraints,
-                settings);
-
-            // Generate volume constraints
-            var volumeConstraints = CreateVolumeConstraints(surfaceParticleIndices, interiorParticleIndices,
-                particles, settings);
-
-            // Handle UVs
-            Vector2[] expandedUVs = null;
-            if (mesh.uv != null && mesh.uv.Length > 0)
+            // Add surface particles
+            for (var i = 0; i < weldedVertices.Length; i++)
             {
-                var weldedUVs =
-                    MeshUtilities.RemapUVsAfterWelding(mesh.uv, vertexMapping, weldedVertices.Length, settings);
-                expandedUVs = ExpandUVsForInteriorParticles(weldedUVs, particles.Count, weldedVertices.Length,
-                    particles, settings);
-            }
-
-            return new GenerationResult
-            {
-                Particles = particles,
-                Constraints = allConstraints,
-                VolumeConstraints = volumeConstraints,
-                Indices = weldedTriangles.ToList(),
-                UVs = expandedUVs
-            };
-        }
-
-// Add these helper methods:
-        private void AddInteriorConstraints(List<int> interiorIndices, List<Particle> particles,
-            List<Constraint> constraints, SoftBodySettings settings)
-        {
-            // Move CreateInteriorConstraints logic here
-            CreateInteriorConstraints(interiorIndices, particles, constraints, settings.structuralCompliance * 0.1f);
-        }
-
-        private void AddSurfaceToInteriorConstraints(List<int> surfaceIndices, List<int> interiorIndices,
-            List<Particle> particles, List<Constraint> constraints, SoftBodySettings settings)
-        {
-            // Move ConnectSurfaceToInterior logic here
-            ConnectSurfaceToInterior(surfaceIndices, interiorIndices, particles, constraints,
-                settings.structuralCompliance);
-        }
-
-        private List<int> CreateSurfaceParticles(Vector3[] vertices, List<Particle> particles,
-            SoftBodySettings settings, Transform transform)
-        {
-            var surfaceIndices = new List<int>();
-
-            for (var i = 0; i < vertices.Length; i++)
-            {
-                var worldPos = transform.TransformPoint(vertices[i]);
+                var worldPos = transform.TransformPoint(weldedVertices[i]);
                 particles.Add(new Particle
                 {
                     Position = worldPos,
@@ -104,17 +41,14 @@ namespace SoftBody.Scripts.Generation
                     Force = Vector4.zero,
                     InvMass = 1f / settings.mass
                 });
-                surfaceIndices.Add(i);
+                surfaceParticleIndices.Add(i);
             }
 
-            return surfaceIndices;
-        }
+            // Generate and add interior particles
+            var interiorPoints = InteriorPointGenerator.GenerateForMesh(
+                weldedVertices, weldedTriangles, settings.interiorPointDensity, settings.debugMessages);
 
-        private List<int> CreateInteriorParticles(List<Vector3> interiorPoints, List<Particle> particles,
-            SoftBodySettings settings, Transform transform)
-        {
-            var interiorIndices = new List<int>();
-
+            var interiorParticleIndices = new List<int>();
             foreach (var point in interiorPoints)
             {
                 var worldPos = transform.TransformPoint(point);
@@ -123,26 +57,199 @@ namespace SoftBody.Scripts.Generation
                     Position = worldPos,
                     Velocity = Vector4.zero,
                     Force = Vector4.zero,
-                    InvMass = 1f / (settings.mass * 2f) // Interior points can be heavier
+                    InvMass = 1f / (settings.mass * 2f) // Interior particles are heavier
                 });
-                interiorIndices.Add(particles.Count - 1);
+                interiorParticleIndices.Add(particles.Count - 1);
             }
 
-            return interiorIndices;
+            // Step 2: Create constraints (matching original implementation)
+            var constraints = new List<Constraint>();
+
+            // A) Surface constraints (flexible - for surface detail)
+            CreateSurfaceConstraints(weldedTriangles, constraints,
+                settings.structuralCompliance * 5f, settings.debugMessages);
+
+            // B) Interior structural constraints (stiffer - for overall shape)
+            CreateInteriorConstraints(interiorParticleIndices, particles, constraints,
+                settings.structuralCompliance * 0.1f); // Much stiffer interior
+
+            // C) Surface-to-interior connections (medium stiffness)
+            ConnectSurfaceToInterior(surfaceParticleIndices, interiorParticleIndices, particles,
+                constraints, settings.structuralCompliance);
+
+            // Step 3: Create volume constraints
+            var volumeConstraints = new List<VolumeConstraint>();
+            CreateVolumeConstraintsFromTetrahedralization(surfaceParticleIndices, interiorParticleIndices,
+                particles, volumeConstraints, settings);
+
+            // E) Fallback volume constraints if needed
+            if (volumeConstraints.Count == 0)
+            {
+                if (settings.debugMessages)
+                {
+                    Debug.Log("No volume constraints from tetrahedralization, using fallback");
+                }
+
+                CreateSimpleFallbackVolumeConstraints(surfaceParticleIndices, particles, volumeConstraints, settings);
+            }
+
+            // Step 4: Handle UVs
+            Vector2[] expandedUVs = null;
+            if (mesh.uv != null && mesh.uv.Length > 0)
+            {
+                var weldedUVs =
+                    MeshUtilities.RemapUVsAfterWelding(mesh.uv, vertexMapping, weldedVertices.Length, settings);
+                expandedUVs = new Vector2[particles.Count];
+
+                // Copy surface UVs
+                for (var i = 0; i < weldedVertices.Length; i++)
+                {
+                    expandedUVs[i] = weldedUVs[i];
+                }
+
+                // Interpolate UVs for interior particles
+                for (var i = weldedVertices.Length; i < particles.Count; i++)
+                {
+                    var closestSurfaceIdx =
+                        FindClosestSurfaceParticle(particles[i].Position, particles, weldedVertices.Length);
+                    expandedUVs[i] = weldedUVs[closestSurfaceIdx];
+                }
+            }
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Tetrahedralized soft body: {particles.Count} particles, " +
+                          $"{constraints.Count} constraints, {volumeConstraints.Count} volume constraints");
+            }
+
+            return new GenerationResult
+            {
+                Particles = particles,
+                Constraints = constraints,
+                VolumeConstraints = volumeConstraints,
+                Indices = weldedTriangles.ToList(),
+                UVs = expandedUVs
+            };
         }
 
-        private List<Constraint> CreateTetrahedralConstraints(List<int> surfaceIndices, List<int> interiorIndices,
-            List<Particle> particles, int[] triangles, SoftBodySettings settings)
+        // Helper methods
+        private void CreateSurfaceConstraints(int[] triangles, List<Constraint> constraints,
+            float compliance, bool debugMessages)
         {
-            var constraints = ConstraintGenerator.GenerateFromMesh(particles, triangles, settings);
+            var edges = new HashSet<(int, int)>();
 
-            CreateInteriorConstraints(interiorIndices, particles, constraints, settings.structuralCompliance * 0.1f);
-            ConnectSurfaceToInterior(surfaceIndices, interiorIndices, particles, constraints,
-                settings.structuralCompliance);
+            // Extract edges from surface triangles
+            for (var i = 0; i < triangles.Length; i += 3)
+            {
+                var a = triangles[i];
+                var b = triangles[i + 1];
+                var c = triangles[i + 2];
 
-            return constraints;
+                AddEdge(edges, a, b);
+                AddEdge(edges, b, c);
+                AddEdge(edges, c, a);
+            }
+
+            // Create constraints for each edge (WITHOUT calculating rest length yet!)
+            foreach (var edge in edges)
+            {
+                constraints.Add(new Constraint
+                {
+                    ParticleA = edge.Item1,
+                    ParticleB = edge.Item2,
+                    RestLength = 0f, // Will be calculated later in SoftBodyGenerator
+                    Compliance = compliance,
+                    Lambda = 0f,
+                    ColourGroup = 0
+                });
+            }
+
+            if (debugMessages)
+            {
+                Debug.Log($"Created {edges.Count} surface constraints");
+            }
         }
 
+        private void CreateVolumeConstraintsFromTetrahedralization(List<int> surfaceIndices,
+            List<int> interiorIndices, List<Particle> particles, List<VolumeConstraint> volumeConstraints,
+            SoftBodySettings settings)
+        {
+            if (settings.debugMessages)
+            {
+                Debug.Log(
+                    $"=== Starting volume constraint creation with {interiorIndices.Count} interior particles ===");
+            }
+
+            if (interiorIndices.Count == 0)
+            {
+                Debug.LogWarning("No interior particles for volume constraints");
+                return;
+            }
+
+            var maxVolumeConstraints = settings.maxVolumeConstraints;
+            var constraintsCreated = 0;
+
+            foreach (var interiorIdx in interiorIndices)
+            {
+                if (constraintsCreated >= maxVolumeConstraints) break;
+
+                // Find the closest surface points
+                var closestSurface = surfaceIndices
+                    .Select(idx => new
+                    {
+                        index = idx,
+                        distance = Vector3.Distance(particles[interiorIdx].Position, particles[idx].Position)
+                    })
+                    .OrderBy(x => x.distance)
+                    .Take(8)
+                    .ToList();
+
+                // Create multiple tetrahedra with different surface point combinations
+                for (var i = 0; i < closestSurface.Count - 2 && constraintsCreated < maxVolumeConstraints; i++)
+                {
+                    for (var j = i + 1; j < closestSurface.Count - 1 && constraintsCreated < maxVolumeConstraints; j++)
+                    {
+                        for (var k = j + 1; k < closestSurface.Count && constraintsCreated < maxVolumeConstraints; k++)
+                        {
+                            var p1 = closestSurface[i].index;
+                            var p2 = closestSurface[j].index;
+                            var p3 = closestSurface[k].index;
+                            var p4 = interiorIdx;
+
+                            // Calculate tetrahedron volume
+                            var pos1 = particles[p1].Position;
+                            var pos2 = particles[p2].Position;
+                            var pos3 = particles[p3].Position;
+                            var pos4 = particles[p4].Position;
+
+                            var v1 = pos1 - pos4;
+                            var v2 = pos2 - pos4;
+                            var v3 = pos3 - pos4;
+                            var restVolume = Vector3.Dot(v1, Vector3.Cross(v2, v3)) / 6.0f;
+
+                            // Only create if volume is reasonable
+                            if (Mathf.Abs(restVolume) > 0.00001f)
+                            {
+                                volumeConstraints.Add(new VolumeConstraint
+                                {
+                                    P1 = p1, P2 = p2, P3 = p3, P4 = p4,
+                                    RestVolume = Mathf.Abs(restVolume),
+                                    Compliance = settings.volumeCompliance,
+                                    Lambda = 0,
+                                    PressureMultiplier = 1f
+                                });
+                                constraintsCreated++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Created {constraintsCreated} volume constraints");
+            }
+        }
 
         private void CreateInteriorConstraints(List<int> interiorIndices, List<Particle> particles,
             List<Constraint> constraints, float compliance)
@@ -387,6 +494,104 @@ namespace SoftBody.Scripts.Generation
             }
 
             return null;
+        }
+
+        private void CreateSimpleFallbackVolumeConstraints(List<int> surfaceParticleIndices,
+            List<Particle> particles, List<VolumeConstraint> volumeConstraints, SoftBodySettings settings)
+        {
+            if (settings.debugMessages)
+            {
+                Debug.Log("Creating simple fallback volume constraints");
+            }
+
+            // Find the centroid of all particles
+            var centroid = Vector3.zero;
+            foreach (var particle in particles)
+            {
+                centroid += particle.Position;
+            }
+
+            centroid /= particles.Count;
+
+            // Add a pseudo-particle at the centroid (or use existing closest particle)
+            var centroidParticleIdx = -1;
+            var minDistToCentroid = float.MaxValue;
+
+            for (var i = 0; i < particles.Count; i++)
+            {
+                var dist = Vector3.Distance(particles[i].Position, centroid);
+                if (dist < minDistToCentroid)
+                {
+                    minDistToCentroid = dist;
+                    centroidParticleIdx = i;
+                }
+            }
+
+            if (centroidParticleIdx == -1)
+            {
+                Debug.LogError("Failed to find centroid particle for fallback volume constraints");
+                return;
+            }
+
+            // Create tetrahedra using surface triangles and the centroid
+            var constraintsCreated = 0;
+            var maxConstraints = Mathf.Min(settings.maxVolumeConstraints, surfaceParticleIndices.Count / 3);
+
+            // Sample surface particles to create tetrahedra
+            for (var i = 0; i < surfaceParticleIndices.Count - 2; i += 3)
+            {
+                if (constraintsCreated >= maxConstraints) break;
+
+                for (var j = i + 1; j < surfaceParticleIndices.Count - 1; j += 3)
+                {
+                    if (constraintsCreated >= maxConstraints) break;
+
+                    for (var k = j + 1; k < surfaceParticleIndices.Count; k += 3)
+                    {
+                        if (constraintsCreated >= maxConstraints) break;
+
+                        var p1 = surfaceParticleIndices[i];
+                        var p2 = surfaceParticleIndices[j];
+                        var p3 = surfaceParticleIndices[k];
+                        var p4 = centroidParticleIdx;
+
+                        // Skip if any indices are the same
+                        if (p1 == p4 || p2 == p4 || p3 == p4) continue;
+
+                        // Calculate tetrahedron volume
+                        var pos1 = particles[p1].Position;
+                        var pos2 = particles[p2].Position;
+                        var pos3 = particles[p3].Position;
+                        var pos4 = particles[p4].Position;
+
+                        var v1 = pos1 - pos4;
+                        var v2 = pos2 - pos4;
+                        var v3 = pos3 - pos4;
+                        var restVolume = Vector3.Dot(v1, Vector3.Cross(v2, v3)) / 6.0f;
+
+                        if (Mathf.Abs(restVolume) > 0.001f)
+                        {
+                            volumeConstraints.Add(new VolumeConstraint
+                            {
+                                P1 = p1,
+                                P2 = p2,
+                                P3 = p3,
+                                P4 = p4,
+                                RestVolume = Mathf.Abs(restVolume),
+                                Compliance = settings.volumeCompliance,
+                                Lambda = 0,
+                                PressureMultiplier = 1f
+                            });
+                            constraintsCreated++;
+                        }
+                    }
+                }
+            }
+
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Created {constraintsCreated} fallback volume constraints");
+            }
         }
     }
 }

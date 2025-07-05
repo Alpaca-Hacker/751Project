@@ -229,7 +229,7 @@ namespace SoftBody.Scripts
             var pusherMovement = _velocity;
     
             // Moderate horizontal forces - not too weak, not too strong
-            var horizontalForce = new Vector3(pusherMovement.x, 0, pusherMovement.z) * (carryForce * 0.5f); // Reduced from 2f
+            var horizontalForce = new Vector3(pusherMovement.x, 0, pusherMovement.z) * (carryForce * 2f);
     
             var toyBounds = toy.GetComponent<MeshFilter>()?.mesh?.bounds ?? new Bounds(Vector3.zero, Vector3.one);
             var toyCenter = toy.transform.position;
@@ -238,7 +238,7 @@ namespace SoftBody.Scripts
             toy.ApplyContinuousForce(toyCenter, horizontalForce, 0.8f);
     
             // Very gentle upward support
-            var supportForce = Vector3.up * (carryForce * 0.1f); // Reduced from 0.3f
+            var supportForce = Vector3.up * (carryForce * 0.3f);
             toy.ApplyContinuousForce(toyCenter, supportForce, 0.3f);
         }
 
@@ -251,7 +251,7 @@ namespace SoftBody.Scripts
     
             if (forceMultiplier > 0.05f)
             {
-                var force = pushDirection * (pushForce * 1.2f * forceMultiplier); // Reduced from 3f
+                var force = pushDirection * (pushForce * 3f * forceMultiplier);
         
                 var toyCenter = toy.transform.position;
         
