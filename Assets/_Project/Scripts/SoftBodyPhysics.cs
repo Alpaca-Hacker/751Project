@@ -33,6 +33,7 @@ namespace SoftBody.Scripts
         // State
         private SoftBodyData _softBodyData;
         private List<Particle> _initialParticles;
+        private bool _isInitialized = false;
 
         // Public properties
         public int ParticleCount => _simulation?.ParticleCount ?? 0;
@@ -43,8 +44,15 @@ namespace SoftBody.Scripts
 
         private void Start()
         {
-            if (settings.SkipUpdate) return;
-
+            if (_isInitialized)
+            {
+                return;
+            }
+            if (settings.SkipUpdate)
+            {
+                return;
+            }
+            
             InitializeSoftBody();
         }
 
@@ -78,6 +86,7 @@ namespace SoftBody.Scripts
             _renderer.SetupMaterial(renderMaterial);
 
             settings.LogSettings();
+            _isInitialized = true;
         }
 
         private void Update()
@@ -165,9 +174,10 @@ namespace SoftBody.Scripts
 
         private void OnEnable()
         {
-            if (settings.useRandomMesh && settings.changeOnActivation && settings.randomMeshes.Length > 0)
+            if (settings.useRandomMesh && settings.changeOnActivation && 
+                settings.randomMeshes.Length > 0 && !_isInitialized)
             {
-                RegenerateWithRandomMesh();
+                InitializeSoftBody();
             }
         }
 
@@ -202,9 +212,13 @@ namespace SoftBody.Scripts
 
         public void RegenerateWithRandomMesh()
         {
-            if (!settings.useRandomMesh || settings.randomMeshes.Length == 0) return;
+            if (!settings.useRandomMesh || settings.randomMeshes.Length == 0)
+            {
+                return;
+            }
 
             settings.SkipUpdate = true; // Prevent updates during regeneration
+            _isInitialized = false;
 
             // Clean up existing systems
             _simulation?.Dispose();
