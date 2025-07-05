@@ -89,7 +89,7 @@ namespace SoftBody.Scripts
 
         private Vector3 CalculateSafeSpawnPosition()
         {
-            Vector3 basePosition = transform.position;
+            var basePosition = transform.position;
 
             // Add random offset within spawn area
             var offset = new Vector3(
@@ -98,10 +98,10 @@ namespace SoftBody.Scripts
                 Random.Range(-spawnAreaSize.z * 0.5f, spawnAreaSize.z * 0.5f)
             );
 
-            Vector3 spawnPos = basePosition + offset;
+            var spawnPos = basePosition + offset;
 
             // Ensure spawn position is above ground (simple raycast check)
-            if (Physics.Raycast(spawnPos + Vector3.up * 2f, Vector3.down, out RaycastHit hit, 10f))
+            if (Physics.Raycast(spawnPos + Vector3.up * 2f, Vector3.down, out var hit, 10f))
             {
                 spawnPos.y = hit.point.y + 1f; // 1 meter above ground
             }

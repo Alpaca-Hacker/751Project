@@ -2,9 +2,14 @@ using System.Collections.Generic;
 using SoftBody.Scripts.Models;
 using UnityEngine;
 
-namespace SoftBody.Scripts.Core
+namespace SoftBody.Scripts.Generation
 {
-    public class SoftBodyData
+    public interface ISoftBodyGenerator
+    {
+        GenerationResult Generate(SoftBodySettings settings, Transform transform);
+    }
+
+    public class GenerationResult
     {
         public List<Particle> Particles { get; set; }
         public List<Constraint> Constraints { get; set; }
@@ -14,5 +19,4 @@ namespace SoftBody.Scripts.Core
 
         public bool IsValid => Particles?.Count > 0 && Constraints?.Count > 0;
     }
-
 }

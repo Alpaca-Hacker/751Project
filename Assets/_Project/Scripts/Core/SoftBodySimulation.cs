@@ -38,27 +38,25 @@ namespace SoftBody.Scripts.Core
             UploadInitialData();
         }
         
-// In SoftBody/Scripts/Core/SoftBodySimulation.cs
 
-        public void SimulateStep(float deltaTime, int maxColourGroup)
+        public void SimulateStep(float deltaTime, int maxColourGroup, bool isLastSubstep)
         {
             if (!ValidateSimulation()) return;
 
-            // Set global parameters (this is correct)
             _computeManager.SetGlobalParameters(
                 deltaTime, _settings, ParticleCount, ConstraintCount, VolumeConstraintCount, _worldPosition
             );
 
             _computeManager.DispatchLambdaDecay(ConstraintCount);
-
             _computeManager.DispatchIntegration(ParticleCount);
+            _computeManager.BindBuffersForConstraintSolving();
 
             for (var iter = 0; iter < _settings.solverIterations; iter++)
             {
                 for (var colourGroup = 0; colourGroup <= maxColourGroup; colourGroup++)
                 {
                     _computeManager.SetColourGroup(colourGroup);
-                    _computeManager.DispatchConstraints(ConstraintCount);
+                    _computeManager.DispatchConstraintsWithoutBinding(ConstraintCount);
 
                     if (VolumeConstraintCount > 0 && colourGroup == 0)
                     {
@@ -75,8 +73,15 @@ namespace SoftBody.Scripts.Core
 
             _computeManager.DispatchVelocityUpdate(ParticleCount);
             _computeManager.DispatchGlobalDamping(ParticleCount);
-            _computeManager.DispatchMeshUpdate(ParticleCount);
 
+            if (isLastSubstep)
+            {
+                _computeManager.DispatchMeshUpdate(ParticleCount);
+            }
+
+            // Always run debug validation
+            _computeManager.DispatchDebugValidation();
+    
             if (_settings.debugMode && Time.frameCount % 10 == 0)
             {
                 _computeManager.ValidateDebugData(_settings.debugMode);
