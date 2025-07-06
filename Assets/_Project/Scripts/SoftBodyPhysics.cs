@@ -91,11 +91,47 @@ namespace SoftBody.Scripts
             _isInitialized = true;
         }
 
-        private void Update()
+        // Split the current Update method into two parts:
+
+        private void FixedUpdate() 
         {
             if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
+            {
                 return;
+            }
+            
+            if (!_isInitialized || _simulation == null || _computeManager == null)
+            {
+                return;
+            }
 
+            // Update sleep state
+            if (settings.enableSleepSystem)
+            {
+                _sleepSystem.Update(Time.fixedDeltaTime); // Use fixedDeltaTime
+                if (_sleepSystem.IsAsleep)
+                {
+                    return;
+                }
+            }
+
+            // Run physics simulation - THIS is what needs fixed timing
+            RunPhysicsSimulation();
+            UpdateMovementTracking();
+    
+            if (settings.debugMode && Time.frameCount % 60 == 0)
+            {
+                DebugCollisionInfo();
+            }
+        }
+
+        private void Update() // MODIFY existing method
+        {
+            if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
+            {
+                return;
+            }
+            
             if (renderMaterial && _simulation != null)
             {
                 var vertexBuffer = _simulation.GetVertexBuffer();
@@ -108,34 +144,18 @@ namespace SoftBody.Scripts
             // Process any pending mesh updates
             _renderer?.ProcessMeshUpdate();
 
-            // Update sleep state
-            if (settings.enableSleepSystem)
-            {
-                _sleepSystem.Update(Time.deltaTime);
-                if (_sleepSystem.IsAsleep) return;
-            }
-
-            // Run physics simulation
-            RunPhysicsSimulation();
-            UpdateMovementTracking();
-            if (settings.debugMode && Time.frameCount % 60 == 0)
-            {
-                DebugCollisionInfo();
-            }
-
-            // Update mesh rendering
-            _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
+            // Update mesh rendering - this can happen at variable frame rate
+           // _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
         }
 
         private void RunPhysicsSimulation()
         {
-            //  Debug.Log($"Running physics for {gameObject.name}");
-
-            var targetDeltaTime = 1f / 60f;
-            var substeps = Mathf.CeilToInt(Time.deltaTime / targetDeltaTime);
-            substeps = Mathf.Clamp(substeps, 1, 100);
-
-            var substepDeltaTime = Time.deltaTime / substeps;
+            // Target internal physics rate of 120Hz for stability
+            const float targetInternalRate = 120f;
+            var substeps = Mathf.CeilToInt(Time.fixedDeltaTime * targetInternalRate);
+            substeps = Mathf.Clamp(substeps, 1, 30); 
+    
+            var substepDeltaTime = Time.fixedDeltaTime / substeps;
 
             for (var step = 0; step < substeps; step++)
             {

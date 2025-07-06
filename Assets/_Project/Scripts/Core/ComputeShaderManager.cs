@@ -11,6 +11,8 @@ namespace SoftBody.Scripts.Core
 
         // Cache thread group sizes
         private const int THREAD_GROUP_SIZE = 64;
+        
+        private bool _buffersAreBound = false;
 
         public ComputeShaderManager(ComputeShader computeShader)
         {
@@ -48,6 +50,82 @@ namespace SoftBody.Scripts.Core
             }
         }
 
+        public void BindAllBuffersOnce()
+        {
+            if (_buffersAreBound) return;
+
+            // Bind buffers to ALL kernels once at startup
+            var particleBuffer = _bufferManager.GetBuffer("particles");
+            var constraintBuffer = _bufferManager.GetBuffer("constraints");
+            var vertexBuffer = _bufferManager.GetBuffer("vertices");
+            var previousPositionsBuffer = _bufferManager.GetBuffer("previousPositions");
+            var volumeConstraintBuffer = _bufferManager.GetBuffer("volumeConstraints");
+            var debugBuffer = _bufferManager.GetBuffer("debug");
+            var colliderBuffer = _bufferManager.GetBuffer("colliders");
+            var collisionCorrectionsBuffer = _bufferManager.GetBuffer("collisionCorrections");
+
+            // Bind to all kernels that need them
+            foreach (var kernel in _kernels)
+            {
+                switch (kernel.Key)
+                {
+                    case "IntegrateAndStore":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.PreviousPositions,
+                            previousPositionsBuffer);
+                        break;
+
+                    case "SolveConstraints":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.Constraints, constraintBuffer);
+                        break;
+
+                    case "UpdateMesh":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.Vertices, vertexBuffer);
+                        break;
+
+                    case "DecayLambdas":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Constraints, constraintBuffer);
+                        break;
+
+                    case "VolumeConstraints":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.VolumeConstraints, volumeConstraintBuffer);
+                        break;
+
+                    case "UpdateVelocities":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.PreviousPositions,
+                            previousPositionsBuffer);
+                        break;
+
+                    case "SolveCollisions":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.Colliders, colliderBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.CollisionCorrections,
+                            collisionCorrectionsBuffer);
+                        break;
+
+                    case "ApplyCollisions":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.CollisionCorrections,
+                            collisionCorrectionsBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.PreviousPositions,
+                            previousPositionsBuffer);
+                        break;
+
+                    case "ApplyDamping":
+                        _computeShader.SetBuffer(kernel.Value, Constants.Particles, particleBuffer);
+                        _computeShader.SetBuffer(kernel.Value, Constants.Colliders, colliderBuffer);
+                        break;
+                }
+            }
+
+            _buffersAreBound = true;
+            Debug.Log("ComputeShader buffers bound once for all kernels");
+        }
+
         public void SetBufferManager(BufferManager bufferManager)
         {
             _bufferManager = bufferManager;
@@ -82,6 +160,11 @@ namespace SoftBody.Scripts.Core
             if (!_kernels.TryGetValue(kernelName, out var kernel))
             {
                 Debug.LogError($"Kernel {kernelName} not found!");
+                return;
+            }
+            if (_bufferManager == null)
+            {
+                Debug.LogWarning($"BufferManager not set yet for kernel {kernelName}. Skipping buffer binding.");
                 return;
             }
 
@@ -155,7 +238,7 @@ namespace SoftBody.Scripts.Core
         public void DispatchLambdaDecay(int constraintCount)
         {
             if (constraintCount <= 0) return;
-
+            
             BindBuffersForKernel("DecayLambdas");
             var threadGroups = CalculateThreadGroups(constraintCount);
             _computeShader.Dispatch(_kernels["DecayLambdas"], threadGroups, 1, 1);
@@ -164,7 +247,7 @@ namespace SoftBody.Scripts.Core
         public void DispatchIntegration(int particleCount)
         {
             if (particleCount <= 0) return;
-
+            
             BindBuffersForKernel("IntegrateAndStore");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["IntegrateAndStore"], threadGroups, 1, 1);
@@ -172,8 +255,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchConstraints(int constraintCount)
         {
-            if (constraintCount <= 0) return;
-
+            if (constraintCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("SolveConstraints");
             var threadGroups = CalculateThreadGroups(constraintCount);
             _computeShader.Dispatch(_kernels["SolveConstraints"], threadGroups, 1, 1);
@@ -181,8 +267,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchVolumeConstraints(int volumeConstraintCount)
         {
-            if (volumeConstraintCount <= 0) return;
-
+            if (volumeConstraintCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("VolumeConstraints");
             var threadGroups = CalculateThreadGroups(volumeConstraintCount);
             _computeShader.Dispatch(_kernels["VolumeConstraints"], threadGroups, 1, 1);
@@ -190,8 +279,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchCollisionDetection(int particleCount)
         {
-            if (particleCount <= 0) return;
-
+            if (particleCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("SolveCollisions");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["SolveCollisions"], threadGroups, 1, 1);
@@ -199,8 +291,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchCollisionResponse(int particleCount)
         {
-            if (particleCount <= 0) return;
-
+            if (particleCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("ApplyCollisions");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["ApplyCollisions"], threadGroups, 1, 1);
@@ -208,8 +303,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchVelocityUpdate(int particleCount)
         {
-            if (particleCount <= 0) return;
-
+            if (particleCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("UpdateVelocities");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["UpdateVelocities"], threadGroups, 1, 1);
@@ -217,8 +315,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchGlobalDamping(int particleCount)
         {
-            if (particleCount <= 0) return;
-
+            if (particleCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("ApplyDamping");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["ApplyDamping"], threadGroups, 1, 1);
@@ -226,8 +327,11 @@ namespace SoftBody.Scripts.Core
 
         public void DispatchMeshUpdate(int particleCount)
         {
-            if (particleCount <= 0) return;
-
+            if (particleCount <= 0)
+            {
+                return;
+            }
+            
             BindBuffersForKernel("UpdateMesh");
             var threadGroups = CalculateThreadGroups(particleCount);
             _computeShader.Dispatch(_kernels["UpdateMesh"], threadGroups, 1, 1);
@@ -246,17 +350,20 @@ namespace SoftBody.Scripts.Core
 
         public void ValidateDebugData(bool debugMode)
         {
-            if (!debugMode) return;
-
-            DispatchDebugValidation();
-
-            var debugData = GetDebugData();
-            if (debugData[0] > 0 || debugData[1] > 0) // NaN or Inf detected
+            if (!debugMode)
             {
-                Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, " +
-                               $"Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, " +
-                               $"First Bad Particle Index: {debugData[3]}");
+                return;
             }
+
+            // DispatchDebugValidation();
+            //
+            // var debugData = GetDebugData();
+            // if (debugData[0] > 0 || debugData[1] > 0) // NaN or Inf detected
+            // {
+            //     Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, " +
+            //                    $"Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, " +
+            //                    $"First Bad Particle Index: {debugData[3]}");
+            // }
         }
 
         // Helper methods
@@ -290,6 +397,15 @@ namespace SoftBody.Scripts.Core
         {
             BindBuffersForKernel("DebugAndValidate");
             _computeShader.Dispatch(_kernels["DebugAndValidate"], 1, 1, 1);
+        }
+        
+        public void UpdateColliderBufferBinding()
+        {
+            var colliderBuffer = _bufferManager.GetBuffer("colliders");
+    
+            // Only rebind collider buffer to kernels that use it
+            _computeShader.SetBuffer(_kernels["SolveCollisions"], Constants.Colliders, colliderBuffer);
+            _computeShader.SetBuffer(_kernels["ApplyDamping"], Constants.Colliders, colliderBuffer);
         }
 
         public void LogThreadEfficiency(string systemName, int actualCount, int threadGroups)

@@ -15,6 +15,9 @@ namespace SoftBody.Scripts.Core
         
         private AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending;
+        private float _lastMeshUpdateTime = 0f;
+        
+        private const float MIN_MESH_UPDATE_INTERVAL = 0.016f;
 
         public SoftBodyRenderer(Transform transform, SoftBodySettings settings)
         {
@@ -100,21 +103,42 @@ namespace SoftBody.Scripts.Core
 
         public void RequestMeshUpdate(ComputeBuffer vertexBuffer)
         {
-            if (_isReadbackPending || vertexBuffer == null) return;
-
+            if (_isReadbackPending || vertexBuffer == null)
+            {
+                return;
+            }
+    
+            // Throttle mesh updates to prevent GPU overload
+            if (Time.time - _lastMeshUpdateTime < MIN_MESH_UPDATE_INTERVAL)
+            {
+                return;
+            }
+    
             _readbackRequest = AsyncGPUReadback.Request(vertexBuffer);
             _isReadbackPending = true;
+            _lastMeshUpdateTime = Time.time;
         }
 
         public void ProcessMeshUpdate()
         {
-            if (!_isReadbackPending || !_readbackRequest.done) return;
+            if (!_isReadbackPending || !_readbackRequest.done)
+            {
+                return;
+            }
+            
+            if (!_meshRenderer.isVisible)
+            {
+                return;
+            }
 
             _isReadbackPending = false;
 
             if (_readbackRequest.hasError)
             {
-                Debug.LogWarning("AsyncGPUReadback failed! Skipping mesh update.");
+                Debug.LogWarning($"AsyncGPUReadback failed! GPU overload detected. Skipping mesh update.");
+        
+                // Reset readback state and wait longer before next attempt
+                _lastMeshUpdateTime = Time.time + 0.1f; // Wait 100ms before trying again
                 return;
             }
 

@@ -195,10 +195,12 @@ namespace SoftBody.Scripts.Core
             result.BufferManager = new BufferManager();
             result.ComputeManager = new ComputeShaderManager(computeShader);
             result.ComputeManager.SetBufferManager(result.BufferManager);
+           
 
             result.Simulation = new SoftBodySimulation(_settings, result.ComputeManager, result.BufferManager);
             result.Simulation.Initialize(result.SoftBodyData, _transform.position);
 
+            result.ComputeManager.BindAllBuffersOnce();
             result.Renderer = new SoftBodyRenderer(_transform, _settings);
             result.CollisionSystem = new CollisionSystem(_settings, _transform, result.ComputeManager, result.BufferManager);
             result.SleepSystem = new SleepSystem(_settings, _transform);

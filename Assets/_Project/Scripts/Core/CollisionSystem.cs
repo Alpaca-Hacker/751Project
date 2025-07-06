@@ -47,8 +47,7 @@ namespace SoftBody.Scripts.Core
                 _computeManager.SetColliderCount(0);
                 return;
             }
-
-            var beforeCount = _colliders.Count;
+            
             _colliders.Clear();
 
             // Add standard Unity colliders from the environment
@@ -76,6 +75,7 @@ namespace SoftBody.Scripts.Core
                     }
 
                     colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
+                    _computeManager.UpdateColliderBufferBinding();
                 }
                 catch (System.Exception e)
                 {
