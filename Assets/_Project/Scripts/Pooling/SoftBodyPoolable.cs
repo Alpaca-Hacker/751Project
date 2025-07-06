@@ -17,6 +17,7 @@ namespace SoftBody.Scripts.Pooling
         private SoftBodyPhysics _softBody;
         private Vector3 _initialScale;
         private float _activeTime = 0f;
+        private bool _hasBeenReturned = false;
 
         private void Awake()
         {
@@ -32,7 +33,8 @@ namespace SoftBody.Scripts.Pooling
         public void OnGetFromPool()
         {
             _activeTime = 0f;
-
+            _hasBeenReturned = false;
+            
             if (_softBody != null)
             {
                 if (_softBody.settings.useRandomMesh && _softBody.settings.changeOnActivation)
@@ -61,6 +63,7 @@ namespace SoftBody.Scripts.Pooling
 
         public void OnReturnToPool()
         {
+            _hasBeenReturned = true;
             if (_softBody != null)
             {
                 if (_softBody.settings.enableSleepSystem)
@@ -75,7 +78,7 @@ namespace SoftBody.Scripts.Pooling
 
         public void ReturnToPool()
         {
-            if (_pool != null)
+            if (_pool != null || _hasBeenReturned)
             {
                 _pool.ReturnObject(gameObject);
             }
@@ -83,7 +86,7 @@ namespace SoftBody.Scripts.Pooling
 
         private void Update()
         {
-            if (!gameObject.activeInHierarchy)
+            if (!gameObject.activeInHierarchy || _hasBeenReturned)
             {
                 return;
             }

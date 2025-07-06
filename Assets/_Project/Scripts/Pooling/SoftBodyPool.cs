@@ -29,6 +29,7 @@ namespace SoftBody.Scripts
         private Queue<GameObject> _availableObjects = new Queue<GameObject>();
         private HashSet<GameObject> _activeObjects = new HashSet<GameObject>();
         private List<GameObject> _allPooledObjects = new List<GameObject>();
+        private bool _isInitialized = false;
 
         // Pool statistics
         public int AvailableCount => _availableObjects.Count;
@@ -55,20 +56,29 @@ namespace SoftBody.Scripts
 
         private void InitializePool()
         {
+            if (_isInitialized)
+            {
+                Debug.LogWarning($"SoftBodyPool '{gameObject.name}' is already initialized!");
+                return;
+            }
+            
             for (var i = 0; i < initialSize; i++)
             {
                 CreatePooledObject();
             }
 
             Debug.Log($"SoftBodyPool '{gameObject.name}' initialized with {initialSize} objects");
+            _isInitialized = true;
         }
         
         private GameObject CreatePooledObject()
         {
             var obj = Instantiate(softBodyPrefab, transform);
             obj.name = $"{softBodyPrefab.name}_Pooled_{_allPooledObjects.Count}";
+    
+            // Ensure object starts INACTIVE
             obj.SetActive(false);
-            
+    
             var softBody = obj.GetComponent<SoftBodyPhysics>();
             if (softBody == null)
             {
@@ -76,33 +86,33 @@ namespace SoftBody.Scripts
                 Destroy(obj);
                 return null;
             }
-            
-            obj.SetActive(true);
-            
+    
+            // Add poolable component while inactive
             var poolable = obj.GetComponent<SoftBodyPoolable>();
             if (poolable == null)
             {
                 poolable = obj.AddComponent<SoftBodyPoolable>();
             }
-            
+    
             poolable.Initialize(this);
             poolable.enableAutoReturn = enableAutoReturn;
             poolable.autoReturnTime = autoReturnTime;
             poolable.fallThreshold = fallThreshold;
             poolable.resetPhysicsStateOnGet = resetPhysicsOnGet;
             poolable.wakeUpOnGet = wakeUpOnGet;
-            
-
+    
+            // Add to available queue (object should be inactive)
             _availableObjects.Enqueue(obj);
             _allPooledObjects.Add(obj);
-
+    
+            Debug.Log($"Created pooled object {obj.name} - Active: {obj.activeInHierarchy}");
+    
             return obj;
         }
 
         public GameObject GetObject()
         {
-            // Try to grow pool if needed
-            if (_availableObjects.Count <= 1)
+            if (_availableObjects.Count == 0)
             {
                 if (allowGrowth && _allPooledObjects.Count < maxSize)
                 {
@@ -120,38 +130,44 @@ namespace SoftBody.Scripts
             var obj = _availableObjects.Dequeue();
             _activeObjects.Add(obj);
 
-            // Reset the object
+            // Reset and activate
             ResetObject(obj);
+            obj.SetActive(true);
 
-           // obj.SetActive(true);
-
-            // Notify the poolable component
-            // var poolable = obj.GetComponent<SoftBodyPoolable>();
-            // poolable?.OnGetFromPool();
+            // Notify poolable
+            var poolable = obj.GetComponent<SoftBodyPoolable>();
+            poolable?.OnGetFromPool();
 
             OnObjectSpawned?.Invoke(obj);
-
+    
+            Debug.Log($"Got object {obj.name} from pool - Available: {_availableObjects.Count}, Active: {_activeObjects.Count}");
+    
             return obj;
         }
 
         public void ReturnObject(GameObject obj)
         {
-            if (!_allPooledObjects.Contains(obj) || !_activeObjects.Contains(obj))
+            if (obj == null) return;
+    
+            if (!_allPooledObjects.Contains(obj))
             {
-                Debug.LogWarning(
-                    $"Trying to return object '{obj.name}' that doesn't belong to pool '{gameObject.name}'");
+                Debug.LogWarning($"Object '{obj.name}' doesn't belong to pool '{gameObject.name}' - ignoring return");
+                return;
+            }
+    
+            if (!_activeObjects.Contains(obj))
+            {
+                Debug.LogWarning($"Object '{obj.name}' is not currently active in pool '{gameObject.name}' - ignoring return");
                 return;
             }
 
             _activeObjects.Remove(obj);
             _availableObjects.Enqueue(obj);
 
-            // Notify the poolable component
             var poolable = obj.GetComponent<SoftBodyPoolable>();
             poolable?.OnReturnToPool();
 
             obj.SetActive(false);
-
             OnObjectReturned?.Invoke(obj);
         }
 
@@ -205,14 +221,42 @@ namespace SoftBody.Scripts
 
         public void PrewarmPool(int count)
         {
-            count = Mathf.Min(count, maxSize - _allPooledObjects.Count);
+            if (!_isInitialized)
+            {
+                Debug.LogWarning($"Cannot prewarm pool '{gameObject.name}' - not initialized yet");
+                return;
+            }
+    
+            // Don't prewarm beyond maxSize
+            var availableSlots = maxSize - _allPooledObjects.Count;
+            var actualCount = Mathf.Min(count, availableSlots);
+    
+            Debug.Log($"PrewarmPool called with {count}, but only creating {actualCount} (available slots: {availableSlots})");
 
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < actualCount; i++)
             {
                 CreatePooledObject();
             }
 
-            Debug.Log($"Prewarmed pool '{gameObject.name}' with {count} additional objects");
+            Debug.Log($"Prewarmed pool '{gameObject.name}' with {actualCount} objects. Total: {_allPooledObjects.Count}");
+        }
+        
+        [ContextMenu("Debug Pool State")]
+        public void DebugPoolState()
+        {
+            Debug.Log($"=== Pool '{gameObject.name}' State ===");
+            Debug.Log($"Total Objects: {_allPooledObjects.Count}");
+            Debug.Log($"Available: {_availableObjects.Count}");
+            Debug.Log($"Active: {_activeObjects.Count}");
+    
+            Debug.Log("=== All Pooled Objects ===");
+            for (var i = 0; i < _allPooledObjects.Count; i++)
+            {
+                var obj = _allPooledObjects[i];
+                var isInActive = _activeObjects.Contains(obj);
+                var isInAvailable = _availableObjects.Contains(obj);
+                Debug.Log($"  {i}: {obj.name} - GameObject.active: {obj.activeInHierarchy} - InActiveSet: {isInActive} - InAvailableQueue: {isInAvailable}");
+            }
         }
     }
 }

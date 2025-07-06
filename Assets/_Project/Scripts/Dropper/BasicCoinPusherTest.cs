@@ -19,9 +19,21 @@ namespace SoftBody.Scripts.Dropper
         public int maxToys = 30;
         
         private int _currentToyCount = 0;
+        private ToyManager _toyManager;
 
         private void Start()
         {
+            // Create or find toy manager
+            _toyManager = FindFirstObjectByType<ToyManager>();
+            if (_toyManager == null)
+            {
+                var managerObj = new GameObject("ToyManager");
+                _toyManager = managerObj.AddComponent<ToyManager>();
+            }
+    
+            // Pre-warm pool
+            softBodyPool.PrewarmPool(maxToys);
+            
             StartCoroutine(PusherCycle());
             StartCoroutine(SpawnCycle());
         }
@@ -73,25 +85,23 @@ namespace SoftBody.Scripts.Dropper
 
         private IEnumerator SpawnCycle()
         {
-            yield return new WaitForSeconds(2f); // Initial delay
-
             while (true)
             {
-                Debug.Log("Spawning toys... Current count: " + _currentToyCount);
-                if (_currentToyCount < maxToys)
-                {
-                    try 
-                    {
-                        SpawnToy();
-                    }
-                    catch (System.Exception e)
-                    {
-                        Debug.LogError($"Error spawning toy: {e.Message}");
-                        // Continue the loop even if spawn fails
-                    }
-                }
-        
                 yield return new WaitForSeconds(spawnInterval);
+        
+                // Only spawn if under limit AND pool has available objects
+                if (_currentToyCount < maxToys && softBodyPool.AvailableCount > 0)
+                {
+                    SpawnToy();
+                }
+                else if (_currentToyCount >= maxToys)
+                {
+                    Debug.Log($"Max toys reached ({maxToys}), waiting for cleanup");
+                }
+                else if (softBodyPool.AvailableCount <= 0)
+                {
+                    Debug.Log("Pool exhausted, waiting for returns");
+                }
             }
         }
 

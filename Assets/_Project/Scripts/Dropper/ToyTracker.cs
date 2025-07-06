@@ -4,41 +4,42 @@ namespace SoftBody.Scripts.Dropper
 {
     public class ToyTracker : MonoBehaviour
     {
-        private BasicCoinPusherTest coinPusher;
-        private SoftBodyPool pool;
-        private bool isTracking = false;
+        private static ToyManager _manager;
+        private bool _isRegistered = false;
         
         public void Initialize(BasicCoinPusherTest pusher, SoftBodyPool softBodyPool)
         {
-            coinPusher = pusher;
-            pool = softBodyPool;
-            isTracking = true;
-        }
-        
-        private void Update()
-        {
-            if (!isTracking) return;
-            
-            if (transform.position.y < -5f)
+            // Find or create the manager
+            if (_manager == null)
             {
-                isTracking = false;
-                
-                if (coinPusher != null)
+                _manager = FindFirstObjectByType<ToyManager>();
+                if (_manager == null)
                 {
-                    coinPusher.OnToyFellOff();
-                }
-                
-                if (pool != null)
-                {
-                    pool.ReturnObject(gameObject);
+                    var managerObj = new GameObject("ToyManager");
+                    _manager = managerObj.AddComponent<ToyManager>();
                 }
             }
+            
+            _manager.RegisterToy(gameObject, pusher, softBodyPool);
+            _isRegistered = true;
         }
         
         private void OnDisable()
         {
-            // Clean up when returned to pool
-            isTracking = false;
+            if (_isRegistered && _manager != null)
+            {
+                _manager.UnregisterToy(gameObject);
+                _isRegistered = false;
+            }
+        }
+        
+        private void OnDestroy()
+        {
+            if (_isRegistered && _manager != null)
+            {
+                _manager.UnregisterToy(gameObject);
+                _isRegistered = false;
+            }
         }
     }
 }
