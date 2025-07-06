@@ -1,3 +1,4 @@
+using SoftBody.Scripts.Pooling;
 using UnityEngine;
 
 namespace SoftBody.Scripts.Dropper
@@ -7,7 +8,7 @@ namespace SoftBody.Scripts.Dropper
         private static ToyManager _manager;
         private bool _isRegistered = false;
         
-        public void Initialize(BasicCoinPusherTest pusher, SoftBodyPool softBodyPool)
+        public void Initialize(BasicCoinPusherTest pusher, PreGeneratedToyPool softBodyPool)
         {
             // Find or create the manager
             if (_manager == null)

@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 7178908992147758378}
   - component: {fileID: 2396979294267986574}
   - component: {fileID: 1104825798472783800}
-  - component: {fileID: -6424062026653946717}
+  - component: {fileID: -86136815882168088}
   m_Layer: 0
   m_Name: TestMesh
   m_TagString: Untagged
@@ -205,7 +205,7 @@ MonoBehaviour:
     - {fileID: 1973988898919851264, guid: cc0fee3bf939ccb4b8c9bd37401bf0aa, type: 3}
     - {fileID: -8223111899323313285, guid: de02346e986fcc2409a76589c35faf76, type: 3}
     - {fileID: -8758853483552632258, guid: 62255ac8f3b093f42b5667e25aebf29f, type: 3}
-    changeOnActivation: 1
+    changeOnActivation: 0
     useTetrahedralizationForHighPoly: 1
     maxSurfaceVerticesBeforeTetra: 100
     interiorPointDensity: 2
@@ -217,19 +217,19 @@ MonoBehaviour:
     autoFixConnectivity: 1
     connectivityMethod: 1
     mass: 1
-    damping: 0.03
+    damping: 0.02
     gravity: 5
     lambdaDecay: 0
-    solverIterations: 5
+    solverIterations: 3
     enableStuffingMode: 1
     stuffingDensity: 0.3
-    pressureResistance: 2.5
+    pressureResistance: 1.5
     skinFlexibility: 2
     stuffingStiffness: 0.1
-    maxStuffingParticles: 30
-    maxStuffingConstraints: 200
-    maxSkinConstraints: 150
-    maxVolumeConstraints: 100
+    maxStuffingParticles: 15
+    maxStuffingConstraints: 100
+    maxSkinConstraints: 75
+    maxVolumeConstraints: 25
     maxAdditionalConstraints: 500
     enablePerformanceLimits: 1
     structuralCompliance: 0.00000001
@@ -240,15 +240,15 @@ MonoBehaviour:
     maxConstraintsPerParticle: 10
     maxConstraintLength: 0.12
     enableSleepSystem: 1
-    sleepVelocityThreshold: 0.005
-    sleepTimeThreshold: 1
+    sleepVelocityThreshold: 0.01
+    sleepTimeThreshold: 0.5
     wakeDistanceThreshold: 0.1
     showSleepState: 0
     enableProximityWake: 1
     proximityWakeRadius: 3
     proximityCheckInterval: 60
     enableMovementDampening: 1
-    stillnessThreshold: 0.01
+    stillnessThreshold: 0.005
     dampeningStrength: 0.95
     minMovementSpeed: 0.001
     floorTransform: {fileID: 0}
@@ -265,7 +265,7 @@ MonoBehaviour:
     debugMessages: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
---- !u!114 &-6424062026653946717
+--- !u!114 &-86136815882168088
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -274,114 +274,6 @@ MonoBehaviour:
   m_GameObject: {fileID: 6961618944237143482}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 08bcfec47e834b6cb2cbcdff22831f8a, type: 3}
+  m_Script: {fileID: 11500000, guid: 790dc53aca974f968021ae96af689d7f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  fbxFolderPath: "Plush_Toys\u2013Low-Poly_BigPack/Models"
-  includeNameFilters: []
-  excludeNameFilters:
-  - Collider
-  - LOD
-  - _low
-  - _high
-  foundMeshNames:
-  - alien_green.fbx -> alien_green
-  - alien_green_2.fbx -> alien_green_2
-  - avocado.fbx -> avocado
-  - baby_dragon.fbx -> baby_dragon
-  - baby_penguin.fbx -> baby_penguin
-  - bananabird.fbx -> bananabird
-  - bear.fbx -> bear
-  - bear_2.fbx -> bear_2
-  - beaver.fbx -> beaver
-  - bee.fbx -> bee
-  - beet.fbx -> beet
-  - berry.fbx -> berry
-  - bread.fbx -> bread
-  - bull.fbx -> bull
-  - bunny.fbx -> bunny
-  - bunny_2.fbx -> bunny_2
-  - bunny_3.fbx -> bunny_3
-  - cabbage.fbx -> cabbage
-  - cactus.fbx -> cactus
-  - carrot.fbx -> carrot
-  - chameleon.fbx -> chameleon
-  - chick_in_an_apron.fbx -> chick_in_an_apron
-  - chicken.fbx -> chicken
-  - cloud.fbx -> cloud
-  - cloud_2.fbx -> cloud_2
-  - clown.fbx -> clown
-  - cookie.fbx -> cookie
-  - cookie_2.fbx -> cookie_2
-  - copybar.fbx -> copybar
-  - crab.fbx -> crab
-  - croasan.fbx -> croasan
-  - cucumber.fbx -> cucumber
-  - devil.fbx -> devil
-  - doggy.fbx -> doggy
-  - dragon.fbx -> dragon
-  - dragon_green.fbx -> dragon_green
-  - dragon_red.fbx -> dragon_red
-  - duck.fbx -> duck
-  - duck_2.fbx -> duck_2
-  - duckling.fbx -> duckling
-  - duckling_2.fbx -> duckling_2
-  - dumpling.fbx -> dumpling
-  - egg.fbx -> egg
-  - eggplant.fbx -> eggplant
-  - elephant.fbx -> elephant
-  - elephant_purple.fbx -> elephant_purple
-  - fish.fbx -> fish
-  - flamingo.fbx -> flamingo
-  - fox.fbx -> fox
-  - frog.fbx -> frog
-  - frog_2.fbx -> frog_2
-  - ghost.fbx -> ghost
-  - giraffe.fbx -> giraffe
-  - ham.fbx -> ham
-  - hedgehog.fbx -> hedgehog
-  - husky.fbx -> husky
-  - kitten.fbx -> kitten
-  - koala.fbx -> koala
-  - mandarin.fbx -> mandarin
-  - marshmallow_man.fbx -> marshmallow_man
-  - acorn.fbx -> acorn
-  - monkey.fbx -> monkey
-  - monkey_pillow.fbx -> monkey_pillow
-  - monster.fbx -> monster
-  - monster_eye.fbx -> monster_eye
-  - monster_frog.fbx -> monster_frog
-  - moose.fbx -> moose
-  - mouse.fbx -> mouse
-  - mouse_2.fbx -> mouse_2
-  - mushroom.fbx -> mushroom
-  - owl.fbx -> owl
-  - panda.fbx -> panda
-  - pelican.fbx -> pelican
-  - piglet.fbx -> piglet
-  - pillow_bear.fbx -> pillow_bear
-  - pillow_bird.fbx -> pillow_bird
-  - pillow_dog.fbx -> pillow_dog
-  - pillow_husky.fbx -> pillow_husky
-  - pineapple.fbx -> pineapple
-  - pineapple_duck.fbx -> pineapple_duck
-  - platypus.fbx -> platypus
-  - polar_bear.fbx -> polar_bear
-  - pony.fbx -> pony
-  - potato.fbx -> potato
-  - pufferfish.fbx -> pufferfish
-  - pumpkin.fbx -> pumpkin
-  - raccoon.fbx -> raccoon
-  - radish.fbx -> radish
-  - red_panda.fbx -> red_panda
-  - rooster.fbx -> rooster
-  - sad_fish.fbx -> sad_fish
-  - sandwich.fbx -> sandwich
-  - seagull.fbx -> seagull
-  - seal_pup.fbx -> seal_pup
-  - shrimp.fbx -> shrimp
-  - star.fbx -> star
-  - toadstool.fbx -> toadstool
-  - tree_stump.fbx -> tree_stump
-  - triceratops.fbx -> triceratops
-  - turtle.fbx -> turtle

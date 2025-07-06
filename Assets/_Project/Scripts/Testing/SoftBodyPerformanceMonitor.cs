@@ -43,7 +43,7 @@ namespace SoftBody.Scripts
         [Header("Spawner References")]
         public SoftBodySpawner softBodySpawner;
 
-        private SoftBodyPool[] _softBodyPools;
+        private PreGeneratedToyPool[] _softBodyPools;
         
         
         private SoftBodySpawner _spawner;
@@ -67,7 +67,7 @@ namespace SoftBody.Scripts
             //_spawner.OnObjectSpawned += UpdateObjectCount;
            
             _allPools = FindObjectsByType<GenericObjectPool>(FindObjectsSortMode.None);
-            _softBodyPools = FindObjectsByType<SoftBodyPool>(FindObjectsSortMode.None);
+            _softBodyPools = FindObjectsByType<PreGeneratedToyPool>(FindObjectsSortMode.None);
 
             InvokeRepeating(nameof(UpdatePerformanceMetrics), 0f, 0.1f);
         }

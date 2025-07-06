@@ -1,11 +1,12 @@
 using System.Collections;
+using SoftBody.Scripts.Pooling;
 using UnityEngine;
 
 namespace SoftBody.Scripts
 {
     public class SoftBodySpawner : MonoBehaviour
     {
-        [Header("Pool")] public SoftBodyPool pool;
+        [Header("Pool")] public PreGeneratedToyPool pool;
 
         [Header("Spawning")] public bool autoSpawn = true;
         public float spawnInterval = 2f;
@@ -26,7 +27,7 @@ namespace SoftBody.Scripts
         {
             if (pool == null)
             {
-                pool = GetComponent<SoftBodyPool>();
+                pool = GetComponent<PreGeneratedToyPool>();
             }
 
             if (pool == null)
@@ -59,7 +60,7 @@ namespace SoftBody.Scripts
             if (pool == null || pool.ActiveCount >= maxActiveObjects)
                 return null;
 
-            var obj = pool.GetObject();
+            var obj = pool.GetRandomToy();
             if (obj == null) return null;
 
             // BETTER spawn position calculation
@@ -161,7 +162,7 @@ namespace SoftBody.Scripts
         {
             if (pool != null)
             {
-                pool.ReturnAllActiveObjects();
+                pool.ReturnAllToys();
             }
         }
 

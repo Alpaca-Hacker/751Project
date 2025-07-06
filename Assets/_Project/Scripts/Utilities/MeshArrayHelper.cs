@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using SoftBody.Scripts.Pooling;
 
 namespace SoftBody.Scripts.Utilities
 {
@@ -46,12 +47,11 @@ namespace SoftBody.Scripts.Utilities
             }
             
             // Apply to soft body
-            var softBody = GetComponent<SoftBodyPhysics>();
-            if (softBody != null)
+            var poolGenerator = GetComponent<SoftBodyPoolGenerator>();
+            if (poolGenerator != null)
             {
-                softBody.settings.randomMeshes = meshList.ToArray();
-                softBody.settings.useRandomMesh = true;
-                UnityEditor.EditorUtility.SetDirty(softBody);
+                poolGenerator.meshVariants= meshList.ToArray();
+                UnityEditor.EditorUtility.SetDirty(poolGenerator);
             }
             
             Debug.Log($"Found {meshList.Count} meshes in {fbxFiles.Length} FBX files from {fbxFolderPath}");

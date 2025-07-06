@@ -7,36 +7,90 @@ namespace SoftBody.Scripts.Dropper
     public class BasicCoinPusherTest : MonoBehaviour
     {
         [Header("References")] 
-        public SoftBodyPool softBodyPool;
+        public PreGeneratedToyPool toyPool; 
         public GameObject pusher;
         public Transform dropZone;
 
-        [Header("Pusher Settings")] public float pushDistance = 5f;
+        [Header("Pusher Settings")] 
+        public float pushDistance = 5f;
         public float pushSpeed = 0.5f;
         public float returnSpeed = 2f;
 
-        [Header("Spawn Settings")] public float spawnInterval = 3f;
-        public int maxToys = 30;
+        [Header("Spawn Settings")] 
+        public float spawnInterval = 3f;
+        public int maxToys = 8;
         
         private int _currentToyCount = 0;
-        private ToyManager _toyManager;
+        private ToyManager toyManager;
 
         private void Start()
         {
-            // Create or find toy manager
-            _toyManager = FindFirstObjectByType<ToyManager>();
-            if (_toyManager == null)
+            // Create toy manager
+            toyManager = FindFirstObjectByType<ToyManager>();
+            if (toyManager == null)
             {
                 var managerObj = new GameObject("ToyManager");
-                _toyManager = managerObj.AddComponent<ToyManager>();
+                toyManager = managerObj.AddComponent<ToyManager>();
             }
-    
-            // Pre-warm pool
-            softBodyPool.PrewarmPool(maxToys);
             
             StartCoroutine(PusherCycle());
             StartCoroutine(SpawnCycle());
         }
+
+        private IEnumerator SpawnCycle()
+        {
+            while (true)
+            {
+                yield return new WaitForSeconds(spawnInterval);
+                
+                if (_currentToyCount < maxToys && toyPool.AvailableCount > 0)
+                {
+                    SpawnToy();
+                }
+                else if (_currentToyCount >= maxToys)
+                {
+                    Debug.Log($"Max toys reached ({maxToys}), waiting for cleanup");
+                }
+                else if (toyPool.AvailableCount <= 0)
+                {
+                    Debug.Log("Pool exhausted, waiting for returns");
+                }
+            }
+        }
+
+        private void SpawnToy()
+        {
+            var toy = toyPool.GetRandomToy();
+            if (toy == null)
+            {
+                Debug.LogWarning("Pool returned null!");
+                return;
+            }
+    
+            Debug.Log($"Spawning toy: {toy.name}");
+    
+            var targetPos = dropZone.position + new Vector3(
+                Random.Range(-1f, 1f),
+                Random.Range(0f, 1f),
+                Random.Range(-0.5f, 0.5f)
+            );
+    
+            toy.transform.position = targetPos;
+            toy.transform.rotation = Random.rotation;
+    
+            // Register with toy manager - pass the actual pool
+            toyManager.RegisterToy(toy, this, toyPool);
+    
+            _currentToyCount++;
+        }
+        // Called by ToyManager when toys fall off
+        public void OnToyFellOff()
+        {
+            _currentToyCount--;
+            _currentToyCount = Mathf.Max(0, _currentToyCount);
+        }
+
+        // Remove the old TrackToy coroutine - ToyManager handles this now
 
         private IEnumerator PusherCycle()
         {
@@ -53,11 +107,7 @@ namespace SoftBody.Scripts.Dropper
                 {
                     elapsed += Time.deltaTime;
                     var t = elapsed / pushTime;
-                    pusher.transform.position = Vector3.Lerp(
-                        startPos,
-                        endPos,
-                        t
-                    );
+                    pusher.transform.position = Vector3.Lerp(startPos, endPos, t);
                     yield return null;
                 }
                 
@@ -71,124 +121,20 @@ namespace SoftBody.Scripts.Dropper
                 {
                     elapsed += Time.deltaTime;
                     var t = elapsed / returnTime;
-                    pusher.transform.position = Vector3.Lerp(
-                        endPos,
-                        startPos,
-                        t
-                    );
+                    pusher.transform.position = Vector3.Lerp(endPos, startPos, t);
                     yield return null;
                 }
-
-                yield return new WaitForSeconds(0.5f);
-            }
-        }
-
-        private IEnumerator SpawnCycle()
-        {
-            while (true)
-            {
-                yield return new WaitForSeconds(spawnInterval);
-        
-                // Only spawn if under limit AND pool has available objects
-                if (_currentToyCount < maxToys && softBodyPool.AvailableCount > 0)
-                {
-                    SpawnToy();
-                }
-                else if (_currentToyCount >= maxToys)
-                {
-                    Debug.Log($"Max toys reached ({maxToys}), waiting for cleanup");
-                }
-                else if (softBodyPool.AvailableCount <= 0)
-                {
-                    Debug.Log("Pool exhausted, waiting for returns");
-                }
-            }
-        }
-
-        private void SpawnToy()
-        {
-            if (softBodyPool == null)
-            {
-                Debug.LogError("softBodyPool is null!");
-                return;
-            }
-    
-            // Check dropZone exists
-            if (dropZone == null)
-            {
-                Debug.LogError("dropZone is null!");
-                return;
-            }
-            
-            var toy = softBodyPool.GetObject();
-            if (toy == null)
-            {
-                Debug.LogWarning("Pool returned null!");
-                return;
-            }
-            
-            Debug.Log("Spawning toy: " + toy.name);
-            
-            var targetPos = dropZone.position + new Vector3(
-                Random.Range(-1f, 1f),
-                Random.Range(0f, 1f),
-                Random.Range(-0.5f, 0.5f)
-            );
-            
-            toy.transform.rotation = Random.rotation;
-            
-            toy.SetActive(true);
-            
-            var softBody = toy.GetComponent<SoftBodyPhysics>();
-            if (softBody)
-            {
-                softBody.SetWorldPosition(targetPos);
-            }
-            else
-            {
-                toy.transform.position = targetPos;
-            }
-            
-            var poolable = toy.GetComponent<SoftBodyPoolable>();
-            poolable?.OnGetFromPool();
-            
-            _currentToyCount++;
-            
-            var tracker = toy.GetComponent<ToyTracker>();
-            if (tracker == null)
-            {
-                tracker = toy.AddComponent<ToyTracker>();
-            }
-            tracker.Initialize(this, softBodyPool);
-        }
-
-// Add this method to be called by the tracker
-        public void OnToyFellOff()
-        {
-            _currentToyCount--;
-            _currentToyCount = Mathf.Max(0, _currentToyCount);
-        }
-
-        private IEnumerator TrackToy(GameObject toy)
-        {
-            while (toy.activeSelf)
-            {
-                if (toy.transform.position.y < -5f)
-                {
-                    // Toy fell off the edge
-                    _currentToyCount--;
-                    softBodyPool.ReturnObject(toy);
-                    yield break;
-                }
-
-                yield return new WaitForSeconds(0.5f);
+                
+                yield return new WaitForSeconds(1f);
             }
         }
 
         private void OnGUI()
         {
             GUI.Label(new Rect(10, 10, 200, 20), $"Active Toys: {_currentToyCount}/{maxToys}");
-            GUI.Label(new Rect(10, 30, 200, 20), "Basic Coin Pusher Test");
+            GUI.Label(new Rect(10, 30, 200, 20), $"Pool Available: {toyPool.AvailableCount}/{toyPool.TotalCount}");
+            GUI.Label(new Rect(10, 50, 200, 20), $"Tracked by Manager: {toyManager.TrackedToyCount}");
+            GUI.Label(new Rect(10, 70, 200, 20), "Enhanced Coin Pusher");
         }
     }
 }
