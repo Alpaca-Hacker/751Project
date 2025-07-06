@@ -34,7 +34,7 @@ namespace SoftBody.Scripts.Core
                 AllCollisionSystems.Add(this);
             }
         }
-        
+
         /// <summary>
         /// Finds all relevant colliders, prepares them, and uploads them to the GPU.
         /// Call this once per frame, before the simulation step.
@@ -43,10 +43,12 @@ namespace SoftBody.Scripts.Core
         {
             if (!_settings.enableCollision && !_settings.enableSoftBodyCollisions)
             {
+                Debug.Log($"  Both collision types disabled, setting count to 0");
                 _computeManager.SetColliderCount(0);
                 return;
             }
 
+            var beforeCount = _colliders.Count;
             _colliders.Clear();
 
             // Add standard Unity colliders from the environment
@@ -64,10 +66,23 @@ namespace SoftBody.Scripts.Core
             // Upload the data to the GPU buffer
             if (_colliders.Count > 0)
             {
-                var colliderBuffer = _bufferManager.GetBuffer("colliders");
-                colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
+                try
+                {
+                    var colliderBuffer = _bufferManager.GetBuffer("colliders");
+                    if (colliderBuffer == null)
+                    {
+                        Debug.LogError($"  Collider buffer is null!");
+                        return;
+                    }
+
+                    colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"  Failed to upload colliders: {e.Message}");
+                }
             }
-            
+
             _computeManager.SetColliderCount(_colliders.Count);
         }
 
@@ -95,74 +110,53 @@ namespace SoftBody.Scripts.Core
             }
         }
 
-        private void AddEnvironmentColliders()
-        {
-            // Note: FindObjectsByType can be slow. For a real game, you would
-            // use a more optimized spatial partitioning system to find nearby colliders.
-            var allColliders = Object.FindObjectsByType<Collider>(FindObjectsSortMode.None);
-            foreach (var col in allColliders)
-            {
-                // Limit colliders to save performance and buffer space
-                if (_colliders.Count >= 48) // Reserve some space for soft bodies
-                {
-                    break;
-                } 
-
-                // Skip triggers and colliders that are part of another soft body
-                if (col.isTrigger || col.GetComponent<SoftBodyPhysics>() != null)
-                {
-                    continue;
-                }
-
-                var sdfCollider = ConvertToSDFCollider(col);
-                if (sdfCollider.HasValue)
-                {
-                    _colliders.Add(sdfCollider.Value);
-                }
-            }
-        }
-
         private void AddSoftBodyColliders()
         {
             // Throttle this check for performance
-            if (Time.frameCount % 5 != 0) return;
-
-            foreach (var otherSystem in AllCollisionSystems)
+            if (Time.frameCount % 5 != 0)
             {
-                if (_colliders.Count >= 64) break;
-                if (otherSystem == this)
+                return;
+            }
+            
+            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(_transform.position, _settings.maxInteractionDistance);
+
+            foreach (var otherBody in nearbySoftBodies)
+            {
+                if (_colliders.Count >= 64)
+                {
+                    break;
+                }
+                if (otherBody.transform == _transform)
                 {
                     continue; // Don't collide with self
                 } 
 
-                var distance = Vector3.Distance(_transform.position, otherSystem.Transform.position);
-
-                if (distance < _settings.maxInteractionDistance)
-                {
-                    var otherBounds = otherSystem.GetEstimatedBounds();
-                    // Approximate the other soft body as a sphere
-                    var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z) 
-                                 * _settings.interactionStrength;
-                    
-                    _colliders.Add(SDFCollider.CreateSphere(otherSystem.Transform.position, radius));
-                }
+                var otherBounds = GetEstimatedBounds(otherBody);
+                // Approximate the other soft body as a sphere
+                var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z) 
+                             * _settings.interactionStrength;
+        
+                _colliders.Add(SDFCollider.CreateSphere(otherBody.transform.position, radius));
             }
         }
 
-        private Bounds GetEstimatedBounds()
+        private Bounds GetEstimatedBounds(SoftBodyPhysics softBody)
         {
-            if (_settings.inputMesh != null && !_settings.useProceduralCube)
+            var settings = softBody.settings;
+            var transform = softBody.transform;
+    
+            if (settings.inputMesh != null && !settings.useProceduralCube)
             {
-                var bounds = _settings.inputMesh.bounds;
-                bounds.size = Vector3.Scale(bounds.size, _transform.localScale);
-                bounds.center = _transform.position;
+                var bounds = settings.inputMesh.bounds;
+                bounds.size = Vector3.Scale(bounds.size, transform.localScale);
+                bounds.center = transform.position;
                 return bounds;
             }
-            if (_settings.useProceduralCube)
+            if (settings.useProceduralCube)
             {
-                return new Bounds(_transform.position, Vector3.Scale(_settings.size, _transform.localScale));
+                return new Bounds(transform.position, Vector3.Scale(settings.size, transform.localScale));
             }
-            return new Bounds(_transform.position, Vector3.one);
+            return new Bounds(transform.position, Vector3.one);
         }
 
         private SDFCollider? ConvertToSDFCollider(Collider col)
@@ -228,6 +222,26 @@ namespace SoftBody.Scripts.Core
 
                 default:
                     return null;
+            }
+        }
+        private void AddEnvironmentColliders()
+        {
+            // Use cached colliders instead of FindObjectsByType
+            var nearbyColliders = SoftBodyCacheManager.GetCollidersNear(_transform.position, _settings.maxInteractionDistance);
+    
+            foreach (var col in nearbyColliders)
+            {
+                // Limit colliders to save performance and buffer space
+                if (_colliders.Count >= 48) // Reserve some space for soft bodies
+                {
+                    break;
+                }
+
+                var sdfCollider = ConvertToSDFCollider(col);
+                if (sdfCollider.HasValue)
+                {
+                    _colliders.Add(sdfCollider.Value);
+                }
             }
         }
     }

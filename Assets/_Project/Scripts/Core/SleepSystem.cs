@@ -139,22 +139,27 @@ namespace SoftBody.Scripts.Core
         private void WakeUpNearby()
         {
             if (!_settings.enableProximityWake) return;
-            
-            // Throttle proximity checks to avoid performance issues
-            if (Time.time - _lastProximityCheckTime < _settings.proximityCheckInterval) return;
+    
+            // Throttle proximity checks
+            if (Time.time - _lastProximityCheckTime < 0.1f) return;
             _lastProximityCheckTime = Time.time;
 
-            var myPosition = _transform.position;
-            var radiusSq = _settings.proximityWakeRadius * _settings.proximityWakeRadius;
-
-            foreach (var otherSystem in AllSleepSystems)
+            var position = _transform.position;
+            var radius = _settings.proximityWakeRadius;
+    
+            // Use spatial cache instead of checking all sleep systems
+            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(position, radius);
+    
+            foreach (var body in nearbySoftBodies)
             {
-                // Skip self or already active bodies
-                if (otherSystem == this || !otherSystem.IsAsleep) continue;
-
-                if (Vector3.SqrMagnitude(myPosition - otherSystem._transform.position) < radiusSq)
+                if (body != null && body.transform != _transform && body.IsAsleep)
                 {
-                    otherSystem.WakeUp();
+                    body.WakeUp();
+            
+                    if (_settings.showSleepState)
+                    {
+                        Debug.Log($"{body.gameObject.name} woken by nearby movement from {_transform.gameObject.name}");
+                    }
                 }
             }
         }

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
+using SoftBody.Scripts.Core;
 using SoftBody.Scripts.Pooling;
 using SoftBody.Scripts.Spawning;
 using TMPro;
@@ -179,14 +180,13 @@ namespace SoftBody.Scripts
         private void UpdateSoftBodyMetrics()
         {
             // Find all active soft bodies
-            _allSoftBodies.Clear();
-            _allSoftBodies.AddRange(FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None));
+            var allSoftBodies = SoftBodyCacheManager.GetCachedSoftBodies();
 
             var totalParticles = 0;
             var totalConstraints = 0;
             var totalMemory = 0f;
 
-            foreach (var softBody in _allSoftBodies)
+            foreach (var softBody in allSoftBodies)
             {
                 if (softBody.enabled)
                 {

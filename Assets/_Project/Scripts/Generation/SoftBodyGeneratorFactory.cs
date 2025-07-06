@@ -18,14 +18,19 @@ namespace SoftBody.Scripts.Generation
                 if (settings.useTetrahedralizationForHighPoly && 
                     settings.inputMesh.vertices.Length > settings.maxSurfaceVerticesBeforeTetra)
                 {
-                    Debug.Log($"Using TetrahedralGenerator for {settings.inputMesh.name} ({settings.inputMesh.vertices.Length} vertices)");
+                    if (settings.debugMessages)
+                    {
+                        Debug.Log($"Using TetrahedralGenerator for {settings.inputMesh.name} ({settings.inputMesh.vertices.Length} vertices)");
+                    }
                     return new TetrahedralGenerator();
                 }
-                else
+
+                if (settings.debugMessages)
                 {
                     Debug.Log($"Using MeshBasedGenerator for {settings.inputMesh.name} ({settings.inputMesh.vertices.Length} vertices)");
-                    return new MeshBasedGenerator();
                 }
+
+                return new MeshBasedGenerator();
             }
 
             return new ProceduralCubeGenerator();

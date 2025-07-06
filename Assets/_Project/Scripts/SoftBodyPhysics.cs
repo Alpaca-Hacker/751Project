@@ -44,6 +44,8 @@ namespace SoftBody.Scripts
 
         private void Start()
         {
+            SoftBodyCacheManager.RegisterSoftBody(this);
+            
             if (_isInitialized)
             {
                 return;
@@ -174,6 +176,8 @@ namespace SoftBody.Scripts
 
         private void OnEnable()
         {
+            SoftBodyCacheManager.RegisterSoftBody(this);
+            
             if (settings.useRandomMesh && settings.changeOnActivation && 
                 settings.randomMeshes.Length > 0 && !_isInitialized)
             {
@@ -183,11 +187,17 @@ namespace SoftBody.Scripts
 
         private void OnDestroy()
         {
+            SoftBodyCacheManager.UnregisterSoftBody(this);
             _simulation?.Dispose();
             _renderer?.Dispose();
             _collisionSystem?.Unregister();
             _sleepSystem?.Unregister();
             _bufferManager?.Dispose();
+        }
+
+        private void OnDisable()
+        {
+            SoftBodyCacheManager.UnregisterSoftBody(this);
         }
 
         // Public API methods
@@ -284,30 +294,35 @@ namespace SoftBody.Scripts
 
         private void WakeUpNearbyObjects(float radius = 0f)
         {
-            if (!settings.enableProximityWake) return;
+            if (!settings.enableProximityWake)
+            {
+                return;
+            }
 
-            if (Time.frameCount % settings.proximityCheckInterval != 0) return;
+            if (Time.frameCount % settings.proximityCheckInterval != 0)
+            {
+                return;
+            }
 
-            if (radius <= 0f) radius = settings.proximityWakeRadius;
+            if (radius <= 0f)
+            {
+                radius = settings.proximityWakeRadius;
+            }
 
             var position = transform.position;
             var radiusSq = radius * radius;
 
             // Find all soft bodies in scene
-            var allSoftBodies = FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
+            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(position, radius);
 
-            foreach (var body in allSoftBodies)
+            foreach (var body in nearbySoftBodies)
             {
                 if (body == null || body == this || !body.IsAsleep) continue;
 
-                var distanceSq = Vector3.SqrMagnitude(position - body.transform.position);
-                if (distanceSq < radiusSq)
+                body.WakeUp();
+                if (settings.showSleepState)
                 {
-                    body.WakeUp();
-                    if (settings.showSleepState)
-                    {
-                        Debug.Log($"{body.gameObject.name} woken by nearby movement from {gameObject.name}");
-                    }
+                    Debug.Log($"{body.gameObject.name} woken by nearby movement from {gameObject.name}");
                 }
             }
         }
