@@ -105,6 +105,22 @@ namespace SoftBody.Scripts.Pooling
                 Debug.Log($"  {i}: {toy.name} - Mesh: {meshName}");
             }
         }
+        [ContextMenu("Generate Pool and Physics Data")]
+        public void GeneratePoolAndPhysicsData()
+        {
+            GeneratePoolInEditor();
+            
+            foreach (var toy in generatedToys)
+            {
+                var softBody = toy.GetComponent<SoftBodyPhysics>();
+                if (softBody != null)
+                {
+                    softBody.GeneratePhysicsDataInEditor();
+                }
+            }
+    
+            Debug.Log($"Generated physics data for all {generatedToys.Count} toys in pool");
+        }
     }
 }
 #endif

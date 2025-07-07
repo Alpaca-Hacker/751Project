@@ -14,6 +14,14 @@ namespace SoftBody.Scripts
         [SerializeField] private ComputeShader computeShader;
         [SerializeField] private Material renderMaterial;
 
+        [Header("Pre-Generated Physics Data")] [SerializeField]
+        private SerializableSoftBodyData _preGeneratedPhysicsData;
+
+        [SerializeField] private bool _hasPreGeneratedData = false;
+
+        [Header("Editor Tools")] [SerializeField]
+        private bool _showPhysicsDataInfo = false;
+
         // Core systems
         private SoftBodySimulation _simulation;
         private SoftBodyRenderer _renderer;
@@ -42,30 +50,51 @@ namespace SoftBody.Scripts
         public bool IsAsleep => _sleepSystem?.IsAsleep ?? false;
         public float MovementSpeed => _sleepSystem?.CurrentSpeed ?? 0f;
         public float MemoryUsageMB => _simulation?.MemoryUsageMB ?? 0f;
+        public bool HasPreGeneratedData => _hasPreGeneratedData && _preGeneratedPhysicsData.IsValid;
+        public SerializableSoftBodyData GetPreGeneratedData() => _preGeneratedPhysicsData;
 
         private void Start()
         {
             SoftBodyCacheManager.RegisterSoftBody(this);
-            
+
             if (SoftBodyPerformanceManager.Instance != null)
             {
                 SoftBodyPerformanceManager.Instance.RegisterSoftBody(this);
             }
-            
+
             if (_isInitialized)
             {
                 return;
             }
+
             if (settings.SkipUpdate)
             {
                 return;
             }
-            
+
             InitializeSoftBody();
         }
 
         private void InitializeSoftBody()
         {
+            // Try fast initialization first if we have pre-generated data
+            if (HasPreGeneratedData && TryFastInitialization())
+            {
+                if (settings.debugMessages)
+                {
+                    Debug.Log($"Fast initialization completed for {gameObject.name} " +
+                              $"({_preGeneratedPhysicsData.particleCount} particles)");
+                }
+
+                return;
+            }
+
+            // Fallback to normal initialization
+            if (settings.debugMessages)
+            {
+                Debug.Log($"Using normal initialization for {gameObject.name} (no pre-generated data)");
+            }
+
             _initializer = new SoftBodyInitializer(settings, transform);
             var result = _initializer.Initialize(computeShader);
 
@@ -97,15 +126,75 @@ namespace SoftBody.Scripts
             _isInitialized = true;
         }
 
-        // Split the current Update method into two parts:
+        private bool TryFastInitialization()
+        {
+            try
+            {
+                // Convert serialized data back to runtime format
+                var particles = _preGeneratedPhysicsData.particles.Select(p => p.ToParticle()).ToList();
+                var constraints = _preGeneratedPhysicsData.constraints.Select(c => c.ToConstraint()).ToList();
+                var volumeConstraints = _preGeneratedPhysicsData.volumeConstraints.Select(vc => vc.ToVolumeConstraint())
+                    .ToList();
 
-        private void FixedUpdate() 
+                // Transform particles to current world position
+                for (var i = 0; i < particles.Count; i++)
+                {
+                    var p = particles[i];
+                    p.Position = transform.TransformPoint(p.Position);
+                    particles[i] = p;
+                }
+
+                // Create soft body data
+                _softBodyData = new SoftBodyData
+                {
+                    Particles = particles,
+                    Constraints = constraints,
+                    VolumeConstraints = volumeConstraints,
+                    Indices = _preGeneratedPhysicsData.indices.ToList(),
+                    UVs = _preGeneratedPhysicsData.uvs
+                };
+
+                // Store initial state
+                _initialParticles = new List<Particle>(particles);
+
+                // Initialize systems directly
+                _bufferManager = new BufferManager();
+                _computeManager = new ComputeShaderManager(computeShader);
+                _computeManager.SetBufferManager(_bufferManager);
+
+                _simulation = new SoftBodySimulation(settings, _computeManager, _bufferManager);
+                _simulation.Initialize(_softBodyData, transform.position);
+
+                _computeManager.BindAllBuffersOnce();
+
+                _renderer = new SoftBodyRenderer(transform, settings);
+                _collisionSystem = new CollisionSystem(settings, transform, _computeManager, _bufferManager);
+                _sleepSystem = new SleepSystem(settings, transform);
+                _interaction = new SoftBodyInteraction(_simulation, _sleepSystem, settings, transform);
+
+                // Setup rendering
+                _renderer.CreateMesh(_softBodyData, _softBodyData.UVs);
+                _renderer.SetupMaterial(renderMaterial);
+
+                _isInitialized = true;
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Fast initialization failed for {gameObject.name}: {e.Message}");
+                return false;
+            }
+        }
+
+
+
+        private void FixedUpdate()
         {
             if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
             {
                 return;
             }
-            
+
             if (!_isInitialized || _simulation == null || _computeManager == null)
             {
                 return;
@@ -124,7 +213,7 @@ namespace SoftBody.Scripts
             // Run physics simulation - THIS is what needs fixed timing
             RunPhysicsSimulation();
             UpdateMovementTracking();
-    
+
             if (settings.debugMode && Time.frameCount % 60 == 0)
             {
                 DebugCollisionInfo();
@@ -137,7 +226,7 @@ namespace SoftBody.Scripts
             {
                 return;
             }
-            
+
             if (renderMaterial && _simulation != null)
             {
                 var vertexBuffer = _simulation.GetVertexBuffer();
@@ -151,7 +240,7 @@ namespace SoftBody.Scripts
             _renderer?.ProcessMeshUpdate();
 
             // Update mesh rendering - this can happen at variable frame rate
-           // _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
+            // _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
         }
 
         private void RunPhysicsSimulation()
@@ -160,8 +249,8 @@ namespace SoftBody.Scripts
             // Target internal physics rate of 120Hz for stability
             const float targetInternalRate = 120f;
             var substeps = Mathf.CeilToInt(Time.fixedDeltaTime * targetInternalRate);
-            substeps = Mathf.Clamp(substeps, 1, 30); 
-    
+            substeps = Mathf.Clamp(substeps, 1, 30);
+
             var substepDeltaTime = Time.fixedDeltaTime / substeps;
 
             for (var step = 0; step < substeps; step++)
@@ -183,10 +272,10 @@ namespace SoftBody.Scripts
             {
                 _collisionSystem.UpdateColliders();
             }
-    
+
             // Update simulation world position
             _simulation.UpdateWorldPosition(transform.position);
-    
+
             // Run simulation step with isLastSubstep parameter
             var maxColourGroup = GetMaxColourGroup();
             _simulation.SimulateStep(deltaTime, maxColourGroup, isLastSubstep);
@@ -207,8 +296,8 @@ namespace SoftBody.Scripts
         private void OnEnable()
         {
             SoftBodyCacheManager.RegisterSoftBody(this);
-            
-            if (settings.useRandomMesh && settings.changeOnActivation && 
+
+            if (settings.useRandomMesh && settings.changeOnActivation &&
                 settings.randomMeshes.Length > 0 && !_isInitialized)
             {
                 InitializeSoftBody();
@@ -369,5 +458,108 @@ namespace SoftBody.Scripts
             Debug.Log($"  InteractionStrength: {settings.interactionStrength}");
             Debug.Log($"  MaxInteractionDistance: {settings.maxInteractionDistance}");
         }
+        
+        private SerializableSoftBodyData GeneratePhysicsDataForCurrentSettings()
+        {
+            List<Particle> particles;
+            List<Constraint> constraints;
+            List<VolumeConstraint> volumeConstraints;
+            List<int> indices;
+            Vector2[] uvs;
+
+            // Use local position for generation, then store relative positions
+            var originalPos = transform.position;
+            transform.position = Vector3.zero;
+
+            try
+            {
+                SoftBodyGenerator.GenerateSoftBody(settings, transform,
+                    out particles, out constraints, out volumeConstraints, out indices, out uvs);
+
+                // Apply graph colouring
+                var algorithm = GraphColouringFactory.Create(settings.graphColouringMethod);
+                algorithm.ApplyColouring(constraints, particles.Count);
+
+                // Convert to local space for storage
+                for (int i = 0; i < particles.Count; i++)
+                {
+                    var p = particles[i];
+                    p.Position = transform.InverseTransformPoint(p.Position);
+                    particles[i] = p;
+                }
+
+                return new SerializableSoftBodyData
+                {
+                    particles = particles.Select(SerializableParticle.FromParticle).ToArray(),
+                    constraints = constraints.Select(SerializableConstraint.FromConstraint).ToArray(),
+                    volumeConstraints = volumeConstraints.Select(SerializableVolumeConstraint.FromVolumeConstraint)
+                        .ToArray(),
+                    indices = indices.ToArray(),
+                    uvs = uvs,
+                    meshName = settings.inputMesh?.name ?? "Procedural",
+                    particleCount = particles.Count,
+                    constraintCount = constraints.Count,
+                    volumeConstraintCount = volumeConstraints.Count
+                };
+            }
+            finally
+            {
+                transform.position = originalPos;
+            }
+        }
+
+        public void SetPreGeneratedPhysicsData(SerializableSoftBodyData physicsData)
+        {
+            _preGeneratedPhysicsData = physicsData;
+            _hasPreGeneratedData = physicsData.IsValid;
+    
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(this);
+#endif
+        }
+        
+        [ContextMenu("Generate Physics Data Now")]
+        public void GeneratePhysicsDataInEditor()
+        {
+#if UNITY_EDITOR
+            if (Application.isPlaying)
+            {
+                Debug.LogWarning("Cannot generate physics data during play mode");
+                return;
+            }
+    
+            try
+            {
+                var physicsData = GeneratePhysicsDataForCurrentSettings();
+                if (physicsData.IsValid)
+                {
+                    SetPreGeneratedPhysicsData(physicsData);
+                    Debug.Log($"Generated physics data for {gameObject.name}: " +
+                              $"{physicsData.particleCount} particles, {physicsData.constraintCount} constraints");
+                }
+                else
+                {
+                    Debug.LogError($"Failed to generate physics data for {gameObject.name}");
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Physics data generation failed: {e.Message}");
+            }
+#endif
+        }
+
+        [ContextMenu("Clear Physics Data")]
+        public void ClearPhysicsData()
+        {
+            _preGeneratedPhysicsData = new SerializableSoftBodyData();
+            _hasPreGeneratedData = false;
+    
+#if UNITY_EDITOR
+            UnityEditor.EditorUtility.SetDirty(this);
+            Debug.Log($"Cleared physics data for {gameObject.name}");
+#endif
+        }
+
     }
 }
