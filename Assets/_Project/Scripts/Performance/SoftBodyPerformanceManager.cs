@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace SoftBody.Scripts.Performance
@@ -10,97 +11,168 @@ namespace SoftBody.Scripts.Performance
         public int maxReducedQualityToys = 6;
         public int maxActiveToys = 8;
         
+        [Header("Distance-Based Quality")]
+        public float highQualityDistance = 8f;
+        public float mediumQualityDistance = 15f;
+        public float cullingDistance = 25f;
+        
         [Header("Quality Settings")]
         public int fullQualitySolverIterations = 2;
         public int reducedQualitySolverIterations = 1;
         public int fullQualityMaxParticles = 15;
         public int reducedQualityMaxParticles = 8;
         
-        private readonly List<SoftBodyPhysics> _managedSoftBodies = new();
+        [Header("Performance Intervals")]
+        public float performanceCheckInterval = 0.2f;
+        public float meshUpdateBaseInterval = 0.033f; // 30fps
+        public float collisionUpdateInterval = 0.1f;
+        
+        private readonly List<ManagedSoftBody> _managedSoftBodies = new();
+        private Camera _mainCamera;
         private int _lastActiveCount = -1;
         private float _updateTimer = 0f;
+        private int _frameCounter = 0;
+        
+        public static SoftBodyPerformanceManager Instance { get; private set; }
+        
+        private void Awake()
+        {
+            if (Instance == null)
+            {
+                Instance = this;
+            }
+            else if (Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+        }
+        
+        private void Start()
+        {
+            _mainCamera = Camera.main;
+        }
         
         private void Update()
         {
+            _frameCounter++;
             _updateTimer += Time.deltaTime;
             
-            // Only check every 0.2 seconds to avoid performance hit
-            if (_updateTimer < 0.2f)
+            // Only check every interval to avoid performance hit
+            if (_updateTimer < performanceCheckInterval)
             {
                 return;
             }
             _updateTimer = 0f;
             
             // Clean up null references
-            _managedSoftBodies.RemoveAll(sb => !sb);
+            _managedSoftBodies.RemoveAll(msb => msb?.SoftBody == null);
             
-            // Count active toys
-            int activeCount = 0;
-            foreach (var sb in _managedSoftBodies)
+            // Update distances and visibility for all managed bodies
+            foreach (var managed in _managedSoftBodies)
             {
-                if (sb.gameObject.activeInHierarchy && !sb.settings.SkipUpdate)
-                    activeCount++;
+                managed.UpdateCameraDistance(_mainCamera);
             }
             
-            // Only update settings if count changed
-            if (activeCount != _lastActiveCount)
+            // Sort by distance for priority-based management
+            _managedSoftBodies.Sort((a, b) => a.DistanceToCamera.CompareTo(b.DistanceToCamera));
+            
+            // Count active toys and update quality
+            int activeCount = UpdateQualityBasedOnDistanceAndLimits();
+            
+            // Only log if count changed significantly
+            if (Mathf.Abs(activeCount - _lastActiveCount) > 1)
             {
-                UpdateQualitySettings(activeCount);
+                Debug.Log($"Performance Manager: {activeCount} active toys, camera distance sorting applied");
                 _lastActiveCount = activeCount;
             }
         }
         
         public void RegisterSoftBody(SoftBodyPhysics softBody)
         {
-            if (!_managedSoftBodies.Contains(softBody))
-            {
-                _managedSoftBodies.Add(softBody);
-            }
+            if (_managedSoftBodies.Any(msb => msb.SoftBody == softBody))
+                return;
+                
+            var managed = new ManagedSoftBody(softBody, this);
+            _managedSoftBodies.Add(managed);
         }
         
         public void UnregisterSoftBody(SoftBodyPhysics softBody)
         {
-            _managedSoftBodies.Remove(softBody);
+            _managedSoftBodies.RemoveAll(msb => msb.SoftBody == softBody);
         }
         
-        private void UpdateQualitySettings(int activeCount)
+        private int UpdateQualityBasedOnDistanceAndLimits()
         {
-            for (var i = 0; i < _managedSoftBodies.Count; i++)
+            var activeCount = 0;
+            var highQualityCount = 0;
+            var mediumQualityCount = 0;
+            
+            foreach (var managed in _managedSoftBodies)
             {
-                var softBody = _managedSoftBodies[i];
-                if (softBody == null || !softBody.gameObject.activeInHierarchy) continue;
+                if (managed.SoftBody == null || !managed.SoftBody.gameObject) continue;
                 
-                if (activeCount > maxActiveToys)
+                var quality = DetermineOptimalQuality(managed, activeCount, highQualityCount, mediumQualityCount);
+                managed.ApplyQualityLevel(quality);
+                
+                // Count active objects
+                if (quality != PerformanceQuality.Disabled)
                 {
-                    // Disable oldest toys beyond limit
-                    if (i >= maxActiveToys)
-                    {
-                        softBody.settings.SkipUpdate = true;
-                    }
-                }
-                else if (activeCount > maxReducedQualityToys)
-                {
-                    // All toys use minimal settings
-                    ApplyMinimalSettings(softBody);
-                }
-                else if (activeCount > maxFullQualityToys)
-                {
-                    // Use reduced settings for all
-                    ApplyReducedSettings(softBody);
-                }
-                else
-                {
-                    // Use full settings for all
-                    ApplyFullSettings(softBody);
+                    activeCount++;
+                    if (quality == PerformanceQuality.High) highQualityCount++;
+                    else if (quality == PerformanceQuality.Medium) mediumQualityCount++;
                 }
             }
+            
+            return activeCount;
         }
         
+        private PerformanceQuality DetermineOptimalQuality(ManagedSoftBody managed, int activeCount, int highCount, int mediumCount)
+        {
+            // Hard distance culling
+            if (managed.DistanceToCamera > cullingDistance || !managed.IsVisible)
+                return PerformanceQuality.Disabled;
+            
+            // Global active limit
+            if (activeCount >= maxActiveToys)
+                return PerformanceQuality.Disabled;
+            
+            // High quality assignment
+            if (managed.DistanceToCamera <= highQualityDistance && highCount < maxFullQualityToys)
+                return PerformanceQuality.High;
+            
+            // Medium quality assignment  
+            if (managed.DistanceToCamera <= mediumQualityDistance && mediumCount < maxReducedQualityToys)
+                return PerformanceQuality.Medium;
+            
+            // Low quality for everything else within culling distance
+            return PerformanceQuality.Low;
+        }
+        
+        // Public API for other systems to check update permissions
+        public bool ShouldUpdateMesh(SoftBodyPhysics softBody)
+        {
+            var managed = _managedSoftBodies.FirstOrDefault(m => m.SoftBody == softBody);
+            if (managed == null) return true; // Default to true if not managed
+            
+            return managed.ShouldUpdateMesh(_frameCounter, meshUpdateBaseInterval);
+        }
+        
+        public bool ShouldUpdateCollisions(SoftBodyPhysics softBody)
+        {
+            var managed = _managedSoftBodies.FirstOrDefault(m => m.SoftBody == softBody);
+            if (managed == null) return true;
+            
+            return managed.ShouldUpdateCollisions(_frameCounter, collisionUpdateInterval);
+        }
+        
+        // Legacy methods for compatibility
         private void ApplyFullSettings(SoftBodyPhysics softBody)
         {
             softBody.settings.SkipUpdate = false;
             softBody.settings.solverIterations = fullQualitySolverIterations;
             softBody.settings.maxStuffingParticles = fullQualityMaxParticles;
+            softBody.settings.damping = 0.01f;
         }
         
         private void ApplyReducedSettings(SoftBodyPhysics softBody)
@@ -108,7 +180,7 @@ namespace SoftBody.Scripts.Performance
             softBody.settings.SkipUpdate = false;
             softBody.settings.solverIterations = reducedQualitySolverIterations;
             softBody.settings.maxStuffingParticles = reducedQualityMaxParticles;
-            softBody.settings.damping = 0.05f; // More damping to settle faster
+            softBody.settings.damping = 0.05f;
         }
         
         private void ApplyMinimalSettings(SoftBodyPhysics softBody)
@@ -116,7 +188,7 @@ namespace SoftBody.Scripts.Performance
             softBody.settings.SkipUpdate = false;
             softBody.settings.solverIterations = 1;
             softBody.settings.maxStuffingParticles = 5;
-            softBody.settings.damping = 0.10f; // Even more damping
+            softBody.settings.damping = 0.10f;
         }
     }
 }

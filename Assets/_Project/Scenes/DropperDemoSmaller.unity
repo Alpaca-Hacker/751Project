@@ -13828,12 +13828,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   maxFullQualityToys: 3
-  maxReducedQualityToys: 6
-  maxActiveToys: 8
-  fullQualitySolverIterations: 2
-  reducedQualitySolverIterations: 1
+  maxReducedQualityToys: 8
+  maxActiveToys: 15
+  highQualityDistance: 8
+  mediumQualityDistance: 15
+  cullingDistance: 25
+  fullQualitySolverIterations: 3
+  reducedQualitySolverIterations: 2
   fullQualityMaxParticles: 15
   reducedQualityMaxParticles: 8
+  performanceCheckInterval: 0.2
+  meshUpdateBaseInterval: 0.033
+  collisionUpdateInterval: 0.1
 --- !u!4 &1726085795
 Transform:
   m_ObjectHideFlags: 0

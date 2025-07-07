@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 7178908992147758378}
   - component: {fileID: 2396979294267986574}
   - component: {fileID: 1104825798472783800}
-  - component: {fileID: -86136815882168088}
   m_Layer: 0
   m_Name: TestMesh
   m_TagString: Untagged
@@ -265,15 +264,3 @@ MonoBehaviour:
     debugMessages: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
---- !u!114 &-86136815882168088
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6961618944237143482}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 790dc53aca974f968021ae96af689d7f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 

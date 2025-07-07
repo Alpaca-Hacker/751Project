@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using SoftBody.Scripts.Core;
 using SoftBody.Scripts.Models;
+using SoftBody.Scripts.Performance;
 using UnityEngine;
 
 namespace SoftBody.Scripts
@@ -45,6 +46,11 @@ namespace SoftBody.Scripts
         private void Start()
         {
             SoftBodyCacheManager.RegisterSoftBody(this);
+            
+            if (SoftBodyPerformanceManager.Instance != null)
+            {
+                SoftBodyPerformanceManager.Instance.RegisterSoftBody(this);
+            }
             
             if (_isInitialized)
             {
@@ -150,6 +156,7 @@ namespace SoftBody.Scripts
 
         private void RunPhysicsSimulation()
         {
+            var shouldUpdateMesh = SoftBodyPerformanceManager.Instance?.ShouldUpdateMesh(this) ?? true;
             // Target internal physics rate of 120Hz for stability
             const float targetInternalRate = 120f;
             var substeps = Mathf.CeilToInt(Time.fixedDeltaTime * targetInternalRate);
@@ -163,7 +170,10 @@ namespace SoftBody.Scripts
                 SimulateSubstep(substepDeltaTime, isLastSubstep);
             }
 
-            _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
+            if (shouldUpdateMesh)
+            {
+                _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
+            }
         }
 
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
