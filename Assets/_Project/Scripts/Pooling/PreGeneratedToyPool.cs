@@ -6,10 +6,10 @@ namespace SoftBody.Scripts.Pooling
     public class PreGeneratedToyPool : MonoBehaviour
     {
         [Header("Pre-Generated Toys")]
-        public List<GameObject> availableToys = new List<GameObject>();
+        public List<GameObject> availableToys = new();
         
-        private Queue<GameObject> _availablePool = new Queue<GameObject>();
-        private HashSet<GameObject> _activePool = new HashSet<GameObject>();
+        private List<GameObject> _availablePool = new();
+        private HashSet<GameObject> _activePool = new();
         
         public int AvailableCount => _availablePool.Count;
         public int ActiveCount => _activePool.Count;
@@ -22,15 +22,13 @@ namespace SoftBody.Scripts.Pooling
         
         private void InitializePool()
         {
-            // Add all pre-generated toys to available pool
             foreach (var toy in availableToys)
             {
                 if (toy != null)
                 {
                     toy.SetActive(false);
-                    _availablePool.Enqueue(toy);
-                    
-                    // Add poolable component if missing
+                    _availablePool.Add(toy);
+            
                     var poolable = toy.GetComponent<SoftBodyPoolablePreGenerated>();
                     if (poolable == null)
                     {
@@ -39,7 +37,7 @@ namespace SoftBody.Scripts.Pooling
                     poolable.Initialize(this);
                 }
             }
-            
+    
             Debug.Log($"Initialized pool with {_availablePool.Count} pre-generated toys");
         }
         
@@ -50,16 +48,18 @@ namespace SoftBody.Scripts.Pooling
                 Debug.LogWarning("No toys available in pool!");
                 return null;
             }
-            
-            var toy = _availablePool.Dequeue();
+    
+            var randomIndex = Random.Range(0, _availablePool.Count);
+            var toy = _availablePool[randomIndex];
+    
+            _availablePool.RemoveAt(randomIndex);
             _activePool.Add(toy);
-            
-            // Simple activation
+    
             toy.SetActive(true);
-            
+    
             var poolable = toy.GetComponent<SoftBodyPoolable>();
             poolable?.OnGetFromPool();
-            
+    
             return toy;
         }
         
@@ -70,13 +70,13 @@ namespace SoftBody.Scripts.Pooling
                 Debug.LogWarning($"Toy {toy.name} not in active pool");
                 return;
             }
-            
+    
             _activePool.Remove(toy);
-            _availablePool.Enqueue(toy);
-            
+            _availablePool.Add(toy);
+    
             var poolable = toy.GetComponent<SoftBodyPoolable>();
             poolable?.OnReturnToPool();
-            
+    
             toy.SetActive(false);
         }
         
