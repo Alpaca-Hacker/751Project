@@ -1,6 +1,7 @@
 // Place this in a new file: SoftBody/Scripts/Core/CollisionSystem.cs
 using System.Collections.Generic;
 using SoftBody.Scripts.Models;
+using SoftBody.Scripts.Performance;
 using UnityEngine;
 
 namespace SoftBody.Scripts.Core
@@ -15,10 +16,15 @@ namespace SoftBody.Scripts.Core
 
         // --- State ---
         private readonly List<SDFCollider> _colliders = new();
+        private int _lastUpdateFrame = -1;
+        private int _updateInterval = 30;
+        private static int _globalCollisionUpdateCounter = 0; // Shared across all systems
+        private readonly int _instanceId;
+        private static int _nextInstanceId = 0;
 
         // --- Static Management ---
         private static readonly List<CollisionSystem> AllCollisionSystems = new();
-        
+
         // Public property to allow other systems to get this one's position
         public Transform Transform => _transform;
 
@@ -28,6 +34,9 @@ namespace SoftBody.Scripts.Core
             _transform = transform;
             _computeManager = computeManager;
             _bufferManager = bufferManager;
+        
+            // Assign a unique ID to this instance
+            _instanceId = _nextInstanceId++;
 
             if (!AllCollisionSystems.Contains(this))
             {
@@ -43,47 +52,85 @@ namespace SoftBody.Scripts.Core
         {
             if (!_settings.enableCollision && !_settings.enableSoftBodyCollisions)
             {
-                Debug.Log($"  Both collision types disabled, setting count to 0");
                 _computeManager.SetColliderCount(0);
                 return;
             }
             
+            // Reduce throttling for environment collisions - update every 10 frames instead of 60
+            if (Time.frameCount - _lastUpdateFrame < 10)
+            {
+                return;
+            }
+
             _colliders.Clear();
 
-            // Add standard Unity colliders from the environment
-            if (_settings.enableCollision)
-            {
-                AddEnvironmentColliders();
-            }
-
-            // Add other soft bodies as approximate sphere colliders
-            if (_settings.enableSoftBodyCollisions)
-            {
-                AddSoftBodyColliders();
-            }
-
-            // Upload the data to the GPU buffer
+            AddEnvironmentColliders();
+            
+            
             if (_colliders.Count > 0)
             {
                 try
                 {
                     var colliderBuffer = _bufferManager.GetBuffer("colliders");
-                    if (colliderBuffer == null)
+                    if (colliderBuffer != null)
                     {
-                        Debug.LogError($"  Collider buffer is null!");
-                        return;
+                        colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
+                        _computeManager.UpdateColliderBufferBinding();
                     }
-
-                    colliderBuffer.SetData(_colliders, 0, 0, _colliders.Count);
-                    _computeManager.UpdateColliderBufferBinding();
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError($"  Failed to upload colliders: {e.Message}");
+                    Debug.LogError($"Failed to upload colliders: {e.Message}");
                 }
             }
 
             _computeManager.SetColliderCount(_colliders.Count);
+        }
+
+        private void AddEnvironmentColliders()
+        {
+            // Prioritize floor and essential colliders
+            var nearbyColliders =
+                SoftBodyCacheManager.GetCollidersNear(_transform.position, _settings.maxInteractionDistance);
+
+            var floorColliders = new List<Collider>();
+            var otherColliders = new List<Collider>();
+
+            // Separate floor/ground colliders from others
+            foreach (var col in nearbyColliders)
+            {
+                if (col.CompareTag("Floor") || col.name.ToLower().Contains("floor") ||
+                    col.name.ToLower().Contains("ground") || col.name.ToLower().Contains("platform"))
+                {
+                    floorColliders.Add(col);
+                }
+                else
+                {
+                    otherColliders.Add(col);
+                }
+            }
+
+            // Always add floor colliders first
+            foreach (var col in floorColliders)
+            {
+                var sdfCollider = ConvertToSDFCollider(col);
+                if (sdfCollider.HasValue)
+                {
+                    _colliders.Add(sdfCollider.Value);
+                }
+            }
+
+            // Then add other environment colliders if we have space
+            foreach (var col in otherColliders)
+            {
+                if (_colliders.Count >= 32) break; // Leave room for soft body colliders
+
+                var sdfCollider = ConvertToSDFCollider(col);
+                if (sdfCollider.HasValue)
+                {
+                    _colliders.Add(sdfCollider.Value);
+                }
+            }
         }
 
         /// <summary>
@@ -110,41 +157,11 @@ namespace SoftBody.Scripts.Core
             }
         }
 
-        private void AddSoftBodyColliders()
-        {
-            // Throttle this check for performance
-            if (Time.frameCount % 5 != 0)
-            {
-                return;
-            }
-            
-            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(_transform.position, _settings.maxInteractionDistance);
-
-            foreach (var otherBody in nearbySoftBodies)
-            {
-                if (_colliders.Count >= 64)
-                {
-                    break;
-                }
-                if (otherBody.transform == _transform)
-                {
-                    continue; // Don't collide with self
-                } 
-
-                var otherBounds = GetEstimatedBounds(otherBody);
-                // Approximate the other soft body as a sphere
-                var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z) 
-                             * _settings.interactionStrength;
-        
-                _colliders.Add(SDFCollider.CreateSphere(otherBody.transform.position, radius));
-            }
-        }
-
         private Bounds GetEstimatedBounds(SoftBodyPhysics softBody)
         {
             var settings = softBody.settings;
             var transform = softBody.transform;
-    
+
             if (settings.inputMesh != null && !settings.useProceduralCube)
             {
                 var bounds = settings.inputMesh.bounds;
@@ -152,10 +169,12 @@ namespace SoftBody.Scripts.Core
                 bounds.center = transform.position;
                 return bounds;
             }
+
             if (settings.useProceduralCube)
             {
                 return new Bounds(transform.position, Vector3.Scale(settings.size, transform.localScale));
             }
+
             return new Bounds(transform.position, Vector3.one);
         }
 
@@ -224,25 +243,51 @@ namespace SoftBody.Scripts.Core
                     return null;
             }
         }
-        private void AddEnvironmentColliders()
+
+        private void AddSoftBodyColliders()
         {
-            // Use cached colliders instead of FindObjectsByType
-            var nearbyColliders = SoftBodyCacheManager.GetCollidersNear(_transform.position, _settings.maxInteractionDistance);
-    
-            foreach (var col in nearbyColliders)
+            var maxSoftBodyColliders = 8; // Reduced from 32
+            var maxCheckDistance = _settings.maxInteractionDistance * 0.5f; // Reduce check range
+
+            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(_transform.position, maxCheckDistance);
+
+            var added = 0;
+            foreach (var otherBody in nearbySoftBodies)
             {
-                // Limit colliders to save performance and buffer space
-                if (_colliders.Count >= 48) // Reserve some space for soft bodies
+                if (added >= maxSoftBodyColliders || _colliders.Count >= 24)
                 {
                     break;
                 }
 
-                var sdfCollider = ConvertToSDFCollider(col);
-                if (sdfCollider.HasValue)
+                if (otherBody.transform == _transform)
                 {
-                    _colliders.Add(sdfCollider.Value);
+                    continue;
                 }
+
+                // Only interact with other high/medium quality objects
+                if (!ShouldInteractWith(otherBody))
+                {
+                    continue;
+                }
+
+                var otherBounds = GetEstimatedBounds(otherBody);
+                var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z)
+                             * _settings.interactionStrength * 0.8f; // Smaller collision spheres
+
+                _colliders.Add(SDFCollider.CreateSphere(otherBody.transform.position, radius));
+                added++;
             }
+        }
+
+        private bool ShouldInteractWith(SoftBodyPhysics otherBody)
+        {
+            // Only high and medium quality objects should interact with each other
+            var performanceManager = SoftBodyPerformanceManager.Instance;
+            if (performanceManager == null) return true;
+
+            // Simple distance check - don't interact with very distant objects
+            var distance = Vector3.Distance(_transform.position, otherBody.transform.position);
+            return distance < _settings.maxInteractionDistance * 0.7f;
         }
     }
 }

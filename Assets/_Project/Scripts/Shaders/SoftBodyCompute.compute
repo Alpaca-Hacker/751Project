@@ -651,7 +651,6 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
         float3 vel = p.velocity.xyz;
         float3 normal = SafeNormalize(correction);
         
-        // Moderate velocity response - not too bouncy, not too dead
         float normalSpeed = dot(vel, normal);
         
         if (normalSpeed < 0) // Moving into surface
@@ -659,20 +658,19 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
             float3 normalVel = normal * normalSpeed;
             float3 tangentVel = vel - normalVel;
             
-            // Moderate energy loss - enough to prevent bouncing, not too much
-            normalVel *= 0.05; 
-            tangentVel *= 1.0 - 0.8;
+            // Much stronger energy loss to prevent bouncing
+            normalVel *= 0.01; // 99% energy loss on collision
+            tangentVel *= 0.5;  // Strong friction
             
             p.velocity.xyz = normalVel + tangentVel;
         }
         
-        // Light additional damping
-        p.velocity.xyz *= 0.98;
+        // Strong overall damping after collision
+        p.velocity.xyz *= 0.8;
         
         particles[p_idx] = p;
     }
 }
-
 
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
@@ -715,14 +713,12 @@ void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
         {
             minDistanceToSurface = distance;
             
-            // Calculate surface normal (simplified)
             if (c.type == COLLIDER_TYPE_PLANE)
             {
                 surfaceNormal = c.data1.xyz;
             }
             else if (c.type == COLLIDER_TYPE_BOX)
             {
-                // Simplified box normal calculation
                 float3 localP = rotate_vector_by_quaternion(pos - c.data1.xyz, quaternion_conjugate(c.rotation));
                 float3 closestPoint = clamp(localP, -c.data2.xyz, c.data2.xyz);
                 float3 localNormal = SafeNormalize(localP - closestPoint);
@@ -731,40 +727,37 @@ void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
         }
     }
 
-    if (minDistanceToSurface < 0.05) // Within 5cm of surface
+    if (minDistanceToSurface < 0.1) // Within 10cm of surface
     {
-        // Strong surface friction
-        float contactStrength = 1.0 - saturate(minDistanceToSurface / 0.05);
+        // Very strong surface damping to prevent bouncing
+        float contactStrength = 1.0 - saturate(minDistanceToSurface / 0.1);
         
-        // Separate normal and tangential components
         float3 normalVel = dot(vel, surfaceNormal) * surfaceNormal;
         float3 tangentialVel = vel - normalVel;
         
-        // Apply strong friction to tangential (sliding) motion
-        float tangentialDamping = lerp(0.99, 0.85, contactStrength); // 1% to 15% loss
+        // Extremely strong damping near surfaces
+        float tangentialDamping = lerp(0.99, 0.7, contactStrength); // 1% to 30% loss
         tangentialVel *= tangentialDamping;
         
-        // Less damping for normal motion (bouncing)
-        float normalDamping = lerp(0.99, 0.95, contactStrength);
+        float normalDamping = lerp(0.99, 0.8, contactStrength); // Strong normal damping too
         normalVel *= normalDamping;
         
         vel = normalVel + tangentialVel;
         
-        // Extra damping for spinning/rotation-like motion
-        if (length(tangentialVel) > length(normalVel) * 2.0) // Mostly tangential = spinning
+        // Extra damping for any rapid movement near surfaces
+        if (length(vel) > 2.0) // If moving faster than 2 units/sec near surface
         {
-            vel *= 0.9; // Extra 10% damping for spinning
+            vel *= 0.7; // Extra 30% damping
         }
     }
     else
     {
-        float dampingFactor = 0.998;
-        // Air resistance only
-        vel *= dampingFactor;
+        // Gentle air resistance when not near surfaces
+        vel *= 0.998;
     }
     
     // Stop very slow motion completely
-    if (length(vel) < 0.001)
+    if (length(vel) < 0.01)
     {
         vel = float3(0, 0, 0);
     }

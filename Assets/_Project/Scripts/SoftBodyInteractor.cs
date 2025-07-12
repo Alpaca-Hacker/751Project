@@ -123,7 +123,7 @@ namespace SoftBody.Scripts
 
         private void PerformPoke(Ray ray)
         {
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            if (Physics.Raycast(ray, out var hit, 100f))
             {
                 if (hit.collider.gameObject == targetSoftBody.gameObject)
                 {
@@ -138,7 +138,7 @@ namespace SoftBody.Scripts
 
         private void ApplyContinuousForce(Ray ray)
         {
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            if (Physics.Raycast(ray, out var hit, 100f))
             {
                 if (hit.collider.gameObject == targetSoftBody.gameObject)
                 {
@@ -167,7 +167,7 @@ namespace SoftBody.Scripts
             // Space to apply upward force
             if (Input.GetKey(KeyCode.Space))
             {
-                if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+                if (Physics.Raycast(ray, out var hit, 100f))
                 {
                     if (hit.collider.gameObject == targetSoftBody.gameObject)
                     {
@@ -221,7 +221,7 @@ namespace SoftBody.Scripts
         {
             if (!showVisualFeedback) return;
     
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            if (Physics.Raycast(ray, out var hit, 100f))
             {
                 if (hit.collider.gameObject == targetSoftBody.gameObject)
                 {
@@ -293,15 +293,15 @@ namespace SoftBody.Scripts
             renderer.material = material;
 
             // Animate scale up then destroy
-            float timer = 0f;
-            float duration = 0.5f;
-            Vector3 startScale = Vector3.one * 0.1f;
-            Vector3 endScale = Vector3.one * (pokeRadius * 2f);
+            var timer = 0f;
+            var duration = 0.5f;
+            var startScale = Vector3.one * 0.1f;
+            var endScale = Vector3.one * (pokeRadius * 2f);
 
             while (timer < duration)
             {
                 timer += Time.deltaTime;
-                float t = timer / duration;
+                var t = timer / duration;
 
                 // Scale up and fade out
                 effectSphere.transform.localScale = Vector3.Lerp(startScale, endScale, t);
@@ -328,7 +328,7 @@ namespace SoftBody.Scripts
 
         private void StartGrab(Ray ray)
         {
-            if (Physics.Raycast(ray, out RaycastHit hit, 100f))
+            if (Physics.Raycast(ray, out var hit, 100f))
             {
                 if (hit.collider.gameObject == targetSoftBody.gameObject)
                 {
@@ -353,7 +353,7 @@ namespace SoftBody.Scripts
 
             var grabRadiusSq = (pokeRadius * 1.5f) * (pokeRadius * 1.5f);
 
-            for (int i = 0; i < currentParticles.Length; i++)
+            for (var i = 0; i < currentParticles.Length; i++)
             {
                 var distSq = Vector3.SqrMagnitude(currentParticles[i].Position - grabPoint);
                 if (distSq <= grabRadiusSq && currentParticles[i].InvMass > 0)
@@ -373,7 +373,7 @@ namespace SoftBody.Scripts
             var plane = new Plane(-cameraForward, grabPlaneCenter);
     
             // Project the ray onto this plane to get the target position
-            if (plane.Raycast(ray, out float enter))
+            if (plane.Raycast(ray, out var enter))
             {
                 var targetGrabPosition = ray.GetPoint(enter);
                 var grabMovement = targetGrabPosition - _grabWorldPosition;

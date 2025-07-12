@@ -28,46 +28,55 @@ namespace SoftBody.Scripts.Performance
             DistanceToCamera = Vector3.Distance(SoftBody.transform.position, camera.transform.position);
             IsVisible = _renderer != null && _renderer.isVisible;
         }
-        
+
         public void ApplyQualityLevel(PerformanceQuality quality)
         {
             if (CurrentQuality == quality) return;
-            
+
             CurrentQuality = quality;
-            
+
             switch (quality)
             {
                 case PerformanceQuality.Disabled:
                     SoftBody.settings.SkipUpdate = true;
                     SoftBody.gameObject.SetActive(false);
                     break;
-                    
+
                 case PerformanceQuality.Low:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
                     SoftBody.settings.solverIterations = 1;
                     SoftBody.settings.maxStuffingParticles = 5;
-                    SoftBody.settings.damping = 0.15f;
+                    SoftBody.settings.damping = 0.3f;
+                    // DISABLE soft body collisions for low quality
+                    SoftBody.settings.enableSoftBodyCollisions = false;
+                    SoftBody.settings.enableCollision = true; // Keep environment collisions
                     break;
-                    
+
                 case PerformanceQuality.Medium:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
                     SoftBody.settings.solverIterations = _manager.reducedQualitySolverIterations;
                     SoftBody.settings.maxStuffingParticles = _manager.reducedQualityMaxParticles;
-                    SoftBody.settings.damping = 0.08f;
+                    SoftBody.settings.damping = 0.25f;
+                    // LIMITED soft body collisions for medium quality
+                    SoftBody.settings.enableSoftBodyCollisions = false;
+                    SoftBody.settings.maxInteractionDistance = 3f; // Reduced range
                     break;
-                    
+
                 case PerformanceQuality.High:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
                     SoftBody.settings.solverIterations = _manager.fullQualitySolverIterations;
                     SoftBody.settings.maxStuffingParticles = _manager.fullQualityMaxParticles;
-                    SoftBody.settings.damping = 0.01f;
+                    SoftBody.settings.damping = 0.02f;
+                    // FULL soft body collisions for high quality
+                    SoftBody.settings.enableSoftBodyCollisions = false;
+                    SoftBody.settings.maxInteractionDistance = 8f;
                     break;
             }
         }
-        
+
         public bool ShouldUpdateMesh(int currentFrame, float baseInterval)
         {
             if (!IsVisible || CurrentQuality == PerformanceQuality.Disabled) return false;

@@ -71,7 +71,7 @@ namespace SoftBody.Scripts.Pooling
         [ContextMenu("Clear Pool")]
         public void ClearExistingPool()
         {
-            for (int i = generatedToys.Count - 1; i >= 0; i--)
+            for (var i = generatedToys.Count - 1; i >= 0; i--)
             {
                 if (generatedToys[i] != null)
                 {
@@ -81,7 +81,7 @@ namespace SoftBody.Scripts.Pooling
             generatedToys.Clear();
             
             // Also clear any children that might be leftover
-            for (int i = transform.childCount - 1; i >= 0; i--)
+            for (var i = transform.childCount - 1; i >= 0; i--)
             {
                 DestroyImmediate(transform.GetChild(i).gameObject);
             }
@@ -91,7 +91,7 @@ namespace SoftBody.Scripts.Pooling
         public void ValidatePool()
         {
             Debug.Log($"Pool contains {generatedToys.Count} toys:");
-            for (int i = 0; i < generatedToys.Count; i++)
+            for (var i = 0; i < generatedToys.Count; i++)
             {
                 var toy = generatedToys[i];
                 if (toy == null)

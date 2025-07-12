@@ -35,7 +35,7 @@ namespace SoftBody.Scripts.Pooling
             return;
         }
         
-        for (int i = 0; i < poolSettings.initialSize; i++)
+        for (var i = 0; i < poolSettings.initialSize; i++)
         {
             CreatePooledObject();
         }
@@ -146,7 +146,7 @@ namespace SoftBody.Scripts.Pooling
     {
         count = Mathf.Min(count, poolSettings.maxSize - _allPooledObjects.Count);
         
-        for (int i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
         {
             CreatePooledObject();
         }

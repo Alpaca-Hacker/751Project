@@ -85,7 +85,7 @@ namespace SoftBody.Scripts.Dropper
                 _trackedToys.CopyTo(toysSnapshot);
                 
                 var toysToRemove = new List<TrackedToy>();
-                int checkedThisFrame = 0;
+                var checkedThisFrame = 0;
                 
                 // Iterate over the snapshot, not the live list
                 for (var i = 0; i < toysSnapshot.Length && checkedThisFrame < maxToysPerFrame; i++)
@@ -134,7 +134,7 @@ namespace SoftBody.Scripts.Dropper
                 // Remove pending toys
                 foreach (var toyToRemove in _pendingRemovals)
                 {
-                    for (int i = _trackedToys.Count - 1; i >= 0; i--)
+                    for (var i = _trackedToys.Count - 1; i >= 0; i--)
                     {
                         if (_trackedToys[i].gameObject == toyToRemove)
                         {

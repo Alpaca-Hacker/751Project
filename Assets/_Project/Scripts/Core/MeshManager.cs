@@ -40,7 +40,7 @@ namespace SoftBody.Scripts.Core
             _mesh = new Mesh { name = "SoftBody_Dynamic" };
             
             var vertices = new Vector3[data.Particles.Count];
-            for (int i = 0; i < data.Particles.Count; i++)
+            for (var i = 0; i < data.Particles.Count; i++)
             {
                 vertices[i] = _transform.InverseTransformPoint(data.Particles[i].Position);
             }
@@ -85,12 +85,12 @@ namespace SoftBody.Scripts.Core
         
         private void UpdateMeshVertices(NativeArray<float> vertexData)
         {
-            int vertexCount = vertexData.Length / 3;
+            var vertexCount = vertexData.Length / 3;
             var vertices = new Vector3[vertexCount];
             var centerOfMass = Vector3.zero;
             
             // Read world positions
-            for (int i = 0; i < vertexCount; i++)
+            for (var i = 0; i < vertexCount; i++)
             {
                 var worldPos = new Vector3(
                     vertexData[i * 3],
@@ -107,7 +107,7 @@ namespace SoftBody.Scripts.Core
             _transform.position = centerOfMass;
             
             // Convert to local space
-            for (int i = 0; i < vertexCount; i++)
+            for (var i = 0; i < vertexCount; i++)
             {
                 var worldPos = new Vector3(
                     vertexData[i * 3],

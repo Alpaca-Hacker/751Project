@@ -51,7 +51,7 @@ namespace SoftBody.Scripts.Core
             };
 
             var vertices = new Vector3[data.Particles.Count];
-            for (int i = 0; i < data.Particles.Count; i++)
+            for (var i = 0; i < data.Particles.Count; i++)
             {
                 vertices[i] = _transform.InverseTransformPoint(data.Particles[i].Position);
             }

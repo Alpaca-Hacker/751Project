@@ -60,7 +60,7 @@ namespace SoftBody.Scripts.Core
         
         public float GetTotalMemoryUsageMB()
         {
-            float totalBytes = 0f;
+            var totalBytes = 0f;
             foreach (var buffer in _buffers.Values)
             {
                 if (buffer != null && buffer.IsValid())

@@ -37,6 +37,7 @@ namespace SoftBody.Scripts
         private float _currentMovementSpeed = 0f;
         private bool _wasPreviouslyMoving = true;
         private int _sleepCheckCounter = 0;
+        private int _collisionUpdateOffset;
 
 
         // State
@@ -56,6 +57,7 @@ namespace SoftBody.Scripts
         private void Start()
         {
             SoftBodyCacheManager.RegisterSoftBody(this);
+            _collisionUpdateOffset = Random.Range(0, 10);
 
             if (SoftBodyPerformanceManager.Instance != null)
             {
@@ -267,16 +269,16 @@ namespace SoftBody.Scripts
 
         private void SimulateSubstep(float deltaTime, bool isLastSubstep)
         {
-            // Update collisions
-            if (settings.enableCollision || settings.enableSoftBodyCollisions)
+            // Update collisions more frequently to prevent falling through
+            var shouldUpdateCollisions = (Time.frameCount + _collisionUpdateOffset) % 5 == 0; 
+    
+            if (shouldUpdateCollisions && settings.enableCollision)
             {
                 _collisionSystem.UpdateColliders();
             }
 
-            // Update simulation world position
             _simulation.UpdateWorldPosition(transform.position);
 
-            // Run simulation step with isLastSubstep parameter
             var maxColourGroup = GetMaxColourGroup();
             _simulation.SimulateStep(deltaTime, maxColourGroup, isLastSubstep);
         }
@@ -287,7 +289,7 @@ namespace SoftBody.Scripts
                 ? _softBodyData.Constraints.Max(c => c.ColourGroup)
                 : 0;
         }
-
+        
         private void OnCollisionEnter(Collision collision)
         {
             _sleepSystem?.OnCollisionImpact(collision.relativeVelocity.magnitude);
@@ -481,7 +483,7 @@ namespace SoftBody.Scripts
                 algorithm.ApplyColouring(constraints, particles.Count);
 
                 // Convert to local space for storage
-                for (int i = 0; i < particles.Count; i++)
+                for (var i = 0; i < particles.Count; i++)
                 {
                     var p = particles[i];
                     p.Position = transform.InverseTransformPoint(p.Position);

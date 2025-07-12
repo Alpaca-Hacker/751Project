@@ -11,19 +11,19 @@ namespace SoftBody.Scripts.Core
         private static readonly List<SoftBodyPhysics> _cachedSoftBodies = new();
         private static readonly List<Collider> _cachedColliders = new();
         private static readonly HashSet<SoftBodyPhysics> _activeSoftBodies = new();
-        
+
         private static float _lastSoftBodyCacheUpdate = -1f;
         private static float _lastColliderCacheUpdate = -1f;
-        
+
         // Cache update intervals (in seconds)
-        private const float SOFT_BODY_CACHE_INTERVAL = 2f;
+        private const float SOFT_BODY_CACHE_INTERVAL = 5f;
         private const float COLLIDER_CACHE_INTERVAL = 5f; // Colliders change less frequently
-        
+
         // Spatial cache for performance
         private static readonly Dictionary<Vector3Int, List<SoftBodyPhysics>> _spatialGrid = new();
         private const float GRID_SIZE = 10f;
-        
-        
+
+
         /// <summary>
         /// Register a soft body when it's created/enabled
         /// </summary>
@@ -59,33 +59,61 @@ namespace SoftBody.Scripts.Core
         /// <summary>
         /// Get soft bodies near a position using spatial grid
         /// </summary>
+        // public static List<SoftBodyPhysics> GetSoftBodiesNear(Vector3 position, float radius)
+        // {
+        //     if (Time.time - _lastSoftBodyCacheUpdate >= SOFT_BODY_CACHE_INTERVAL)
+        //     {
+        //         UpdateSoftBodyCache();
+        //     }
+        //     
+        //     UpdateSpatialGrid();
+        //     
+        //     var result = new List<SoftBodyPhysics>();
+        //     var gridPos = WorldToGrid(position);
+        //     var gridRadius = Mathf.CeilToInt(radius / GRID_SIZE);
+        //     
+        //     // Check surrounding grid cells
+        //     for (var x = -gridRadius; x <= gridRadius; x++)
+        //     {
+        //         for (var z = -gridRadius; z <= gridRadius; z++)
+        //         {
+        //             var checkPos = gridPos + new Vector3Int(x, 0, z);
+        //             if (_spatialGrid.TryGetValue(checkPos, out var bodies))
+        //             {
+        //                 foreach (var body in bodies)
+        //                 {
+        //                     if (body != null && Vector3.Distance(position, body.transform.position) <= radius)
+        //                     {
+        //                         result.Add(body);
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        //     
+        //     return result;
+        // }
+
         public static List<SoftBodyPhysics> GetSoftBodiesNear(Vector3 position, float radius)
         {
-            UpdateSpatialGrid();
-            
+            // Remove the forced update - let it update on its normal schedule
+            UpdateSoftBodyCacheIfNeeded(); // Use normal throttled update
+
             var result = new List<SoftBodyPhysics>();
-            var gridPos = WorldToGrid(position);
-            var gridRadius = Mathf.CeilToInt(radius / GRID_SIZE);
-            
-            // Check surrounding grid cells
-            for (int x = -gridRadius; x <= gridRadius; x++)
+
+            // Simple distance check instead of complex spatial grid for now
+            foreach (var body in _cachedSoftBodies)
             {
-                for (int z = -gridRadius; z <= gridRadius; z++)
+                if (body != null && body.enabled && body.gameObject.activeInHierarchy)
                 {
-                    var checkPos = gridPos + new Vector3Int(x, 0, z);
-                    if (_spatialGrid.TryGetValue(checkPos, out var bodies))
+                    var distance = Vector3.Distance(position, body.transform.position);
+                    if (distance <= radius)
                     {
-                        foreach (var body in bodies)
-                        {
-                            if (body != null && Vector3.Distance(position, body.transform.position) <= radius)
-                            {
-                                result.Add(body);
-                            }
-                        }
+                        result.Add(body);
                     }
                 }
             }
-            
+
             return result;
         }
 

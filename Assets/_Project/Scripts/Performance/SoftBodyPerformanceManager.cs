@@ -27,6 +27,7 @@ namespace SoftBody.Scripts.Performance
         public float meshUpdateBaseInterval = 0.033f; // 30fps
         public float collisionUpdateInterval = 0.1f;
         
+        
         private readonly List<ManagedSoftBody> _managedSoftBodies = new();
         private Camera _mainCamera;
         private int _lastActiveCount = -1;
@@ -78,7 +79,7 @@ namespace SoftBody.Scripts.Performance
             _managedSoftBodies.Sort((a, b) => a.DistanceToCamera.CompareTo(b.DistanceToCamera));
             
             // Count active toys and update quality
-            int activeCount = UpdateQualityBasedOnDistanceAndLimits();
+            var activeCount = UpdateQualityBasedOnDistanceAndLimits();
             
             // Only log if count changed significantly
             if (Mathf.Abs(activeCount - _lastActiveCount) > 1)
@@ -132,19 +133,19 @@ namespace SoftBody.Scripts.Performance
             // Hard distance culling
             if (managed.DistanceToCamera > cullingDistance || !managed.IsVisible)
                 return PerformanceQuality.Disabled;
-            
+    
             // Global active limit
             if (activeCount >= maxActiveToys)
                 return PerformanceQuality.Disabled;
-            
+    
             // High quality assignment
             if (managed.DistanceToCamera <= highQualityDistance && highCount < maxFullQualityToys)
                 return PerformanceQuality.High;
-            
+    
             // Medium quality assignment  
             if (managed.DistanceToCamera <= mediumQualityDistance && mediumCount < maxReducedQualityToys)
                 return PerformanceQuality.Medium;
-            
+    
             // Low quality for everything else within culling distance
             return PerformanceQuality.Low;
         }
@@ -157,6 +158,8 @@ namespace SoftBody.Scripts.Performance
             
             return managed.ShouldUpdateMesh(_frameCounter, meshUpdateBaseInterval);
         }
+        
+        
         
         public bool ShouldUpdateCollisions(SoftBodyPhysics softBody)
         {
