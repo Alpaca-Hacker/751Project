@@ -651,7 +651,6 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
         float3 vel = p.velocity.xyz;
         float3 normal = SafeNormalize(correction);
         
-        // Moderate velocity response - not too bouncy, not too dead
         float normalSpeed = dot(vel, normal);
         
         if (normalSpeed < 0) // Moving into surface
@@ -659,15 +658,15 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
             float3 normalVel = normal * normalSpeed;
             float3 tangentVel = vel - normalVel;
             
-            // Moderate energy loss - enough to prevent bouncing, not too much
-            normalVel *= 0.05; 
-            tangentVel *= 1.0 - 0.8;
+            // Moderate energy loss - enough to prevent bouncing
+            normalVel *= 0.01; 
+            tangentVel *= 0.5;
             
             p.velocity.xyz = normalVel + tangentVel;
         }
         
-        // Light additional damping
-        p.velocity.xyz *= 0.98;
+        // additional damping
+        p.velocity.xyz *= 0.8;
         
         particles[p_idx] = p;
     }
@@ -734,18 +733,18 @@ void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
     if (minDistanceToSurface < 0.05) // Within 5cm of surface
     {
         // Strong surface friction
-        float contactStrength = 1.0 - saturate(minDistanceToSurface / 0.05);
+        float contactStrength = 1.0 - saturate(minDistanceToSurface / 0.1);
         
         // Separate normal and tangential components
         float3 normalVel = dot(vel, surfaceNormal) * surfaceNormal;
         float3 tangentialVel = vel - normalVel;
         
         // Apply strong friction to tangential (sliding) motion
-        float tangentialDamping = lerp(0.99, 0.85, contactStrength); // 1% to 15% loss
+        float tangentialDamping = lerp(0.99, 0.7, contactStrength); // 1% to 30% loss
         tangentialVel *= tangentialDamping;
         
         // Less damping for normal motion (bouncing)
-        float normalDamping = lerp(0.99, 0.95, contactStrength);
+        float normalDamping = lerp(0.99, 0.8, contactStrength);
         normalVel *= normalDamping;
         
         vel = normalVel + tangentialVel;
@@ -753,7 +752,7 @@ void ApplyGlobalDamping(uint3 id : SV_DispatchThreadID)
         // Extra damping for spinning/rotation-like motion
         if (length(tangentialVel) > length(normalVel) * 2.0) // Mostly tangential = spinning
         {
-            vel *= 0.9; // Extra 10% damping for spinning
+            vel *= 0.7; // Extra 10% damping for spinning
         }
     }
     else

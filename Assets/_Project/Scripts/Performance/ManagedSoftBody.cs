@@ -32,38 +32,44 @@ namespace SoftBody.Scripts.Performance
         public void ApplyQualityLevel(PerformanceQuality quality)
         {
             if (CurrentQuality == quality) return;
-            
+    
             CurrentQuality = quality;
-            
+    
             switch (quality)
             {
                 case PerformanceQuality.Disabled:
                     SoftBody.settings.SkipUpdate = true;
-                    SoftBody.gameObject.SetActive(false);
+                   //SoftBody.gameObject.SetActive(false);
                     break;
-                    
+            
                 case PerformanceQuality.Low:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
                     SoftBody.settings.solverIterations = 1;
-                    SoftBody.settings.maxStuffingParticles = 5;
-                    SoftBody.settings.damping = 0.15f;
+                    SoftBody.settings.maxStuffingParticles = 3;
+                    SoftBody.settings.damping = 0.3f; // Increased damping to reduce bouncing
+                    SoftBody.settings.enableSoftBodyCollisions = false;
+                    SoftBody.settings.enableCollision = true;
                     break;
-                    
+            
                 case PerformanceQuality.Medium:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
-                    SoftBody.settings.solverIterations = _manager.reducedQualitySolverIterations;
-                    SoftBody.settings.maxStuffingParticles = _manager.reducedQualityMaxParticles;
-                    SoftBody.settings.damping = 0.08f;
+                    SoftBody.settings.solverIterations = 1;
+                    SoftBody.settings.maxStuffingParticles = 5;
+                    SoftBody.settings.damping = 0.25f; // Increased damping
+                    SoftBody.settings.enableSoftBodyCollisions = true;
+                    SoftBody.settings.enableCollision = true;
                     break;
-                    
+            
                 case PerformanceQuality.High:
                     SoftBody.gameObject.SetActive(true);
                     SoftBody.settings.SkipUpdate = false;
-                    SoftBody.settings.solverIterations = _manager.fullQualitySolverIterations;
-                    SoftBody.settings.maxStuffingParticles = _manager.fullQualityMaxParticles;
-                    SoftBody.settings.damping = 0.01f;
+                    SoftBody.settings.solverIterations = 2;
+                    SoftBody.settings.maxStuffingParticles = 8;
+                    SoftBody.settings.damping = 0.2f; // Increased damping
+                    SoftBody.settings.enableSoftBodyCollisions = true;
+                    SoftBody.settings.enableCollision = true;
                     break;
             }
         }
