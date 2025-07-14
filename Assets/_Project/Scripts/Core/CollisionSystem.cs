@@ -117,8 +117,9 @@ namespace SoftBody.Scripts.Core
             {
                 return;
             }
-            
-            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(_transform.position, _settings.maxInteractionDistance);
+    
+            // Use the soft body specific distance
+            var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(_transform.position, _settings.maxSoftBodyInteractionDistance);
 
             foreach (var otherBody in nearbySoftBodies)
             {
@@ -132,10 +133,9 @@ namespace SoftBody.Scripts.Core
                 } 
 
                 var otherBounds = GetEstimatedBounds(otherBody);
-                // Approximate the other soft body as a sphere
                 var radius = Mathf.Max(otherBounds.extents.x, otherBounds.extents.y, otherBounds.extents.z) 
                              * _settings.interactionStrength;
-        
+
                 _colliders.Add(SDFCollider.CreateSphere(otherBody.transform.position, radius));
             }
         }
@@ -226,9 +226,9 @@ namespace SoftBody.Scripts.Core
         }
         private void AddEnvironmentColliders()
         {
-            // Use cached colliders instead of FindObjectsByType
-            var nearbyColliders = SoftBodyCacheManager.GetCollidersNear(_transform.position, _settings.maxInteractionDistance);
-    
+            // Use the environment specific distance
+            var nearbyColliders = SoftBodyCacheManager.GetCollidersNear(_transform.position, _settings.maxEnvironmentCollisionDistance);
+
             foreach (var col in nearbyColliders)
             {
                 // Limit colliders to save performance and buffer space

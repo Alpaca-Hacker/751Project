@@ -48,7 +48,7 @@ namespace SoftBody.Scripts.Performance
                     SoftBody.settings.solverIterations = 1;
                     SoftBody.settings.maxStuffingParticles = 3;
                     SoftBody.settings.damping = 0.3f; // Increased damping to reduce bouncing
-                    SoftBody.settings.enableSoftBodyCollisions = false;
+                    SoftBody.settings.enableSoftBodyCollisions = true;
                     SoftBody.settings.enableCollision = true;
                     break;
             

@@ -257,10 +257,22 @@ MonoBehaviour:
       m_Bits: 4294967295
     enableSoftBodyCollisions: 1
     interactionStrength: 0.8
-    maxInteractionDistance: 5
+    maxInteractionDistance: 3
     SkipUpdate: 0
     debugMode: 0
     graphColouringMethod: 2
     debugMessages: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
+  _preGeneratedPhysicsData:
+    particles: []
+    constraints: []
+    volumeConstraints: []
+    indices: 
+    uvs: []
+    meshName: 
+    particleCount: 0
+    constraintCount: 0
+    volumeConstraintCount: 0
+  _hasPreGeneratedData: 0
+  _showPhysicsDataInfo: 0

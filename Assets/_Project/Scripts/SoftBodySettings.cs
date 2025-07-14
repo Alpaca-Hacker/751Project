@@ -96,7 +96,9 @@ namespace SoftBody.Scripts
         [Tooltip("How much soft bodies push each other (0 = no interaction, 1 = full physics)")]
         public float interactionStrength = 0.8f;
         [Tooltip("Maximum distance to detect other soft bodies")]
-        public float maxInteractionDistance = 5f;
+        public float maxSoftBodyInteractionDistance = 0.5f;
+        [Tooltip("Maximum distance to detect environment colliders")]
+        public float maxEnvironmentCollisionDistance = 5f;
         
         [Header("Debug Options")]
         public bool SkipUpdate = false;

@@ -456,7 +456,7 @@ namespace SoftBody.Scripts
             Debug.Log($"  EnableCollision: {settings.enableCollision}");
             Debug.Log($"  EnableSoftBodyCollisions: {settings.enableSoftBodyCollisions}");
             Debug.Log($"  InteractionStrength: {settings.interactionStrength}");
-            Debug.Log($"  MaxInteractionDistance: {settings.maxInteractionDistance}");
+            Debug.Log($"  MaxInteractionDistance: {settings.maxEnvironmentCollisionDistance}");
         }
         
         private SerializableSoftBodyData GeneratePhysicsDataForCurrentSettings()
