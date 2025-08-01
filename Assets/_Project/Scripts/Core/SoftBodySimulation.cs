@@ -63,12 +63,12 @@ namespace SoftBody.Scripts.Core
                         _computeManager.DispatchVolumeConstraints(VolumeConstraintCount);
                     }
                 }
-
-                if (_settings.enableCollision || _settings.enableSoftBodyCollisions)
-                {
-                    _computeManager.DispatchCollisionDetection(ParticleCount);
-                    _computeManager.DispatchCollisionResponse(ParticleCount);
-                }
+            }
+            
+            if (_settings.enableCollision || _settings.enableSoftBodyCollisions)
+            {
+                _computeManager.DispatchCollisionDetection(ParticleCount);
+                _computeManager.DispatchCollisionResponse(ParticleCount);
             }
 
             _computeManager.DispatchVelocityUpdate(ParticleCount);

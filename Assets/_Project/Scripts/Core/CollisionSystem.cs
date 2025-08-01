@@ -15,12 +15,26 @@ namespace SoftBody.Scripts.Core
 
         // --- State ---
         private readonly List<SDFCollider> _colliders = new();
+        private readonly List<SDFCollider> _dynamicColliders = new();
 
         // --- Static Management ---
         private static readonly List<CollisionSystem> AllCollisionSystems = new();
         
         // Public property to allow other systems to get this one's position
         public Transform Transform => _transform;
+
+        /// <summary>
+        /// Sets a list of dynamic colliders to be included in the next simulation step.
+        /// This is used by external tools like the crusher press.
+        /// </summary>
+        public void SetDynamicColliders(List<SDFCollider> colliders)
+        {
+            _dynamicColliders.Clear();
+            if (colliders != null)
+            {
+                _dynamicColliders.AddRange(colliders);
+            }
+        }
 
         public CollisionSystem(SoftBodySettings settings, Transform transform, ComputeShaderManager computeManager, BufferManager bufferManager)
         {
@@ -41,14 +55,16 @@ namespace SoftBody.Scripts.Core
         /// </summary>
         public void UpdateColliders()
         {
-            if (!_settings.enableCollision && !_settings.enableSoftBodyCollisions)
+            if (!_settings.enableCollision && !_settings.enableSoftBodyCollisions && _dynamicColliders.Count == 0)
             {
-                Debug.Log($"  Both collision types disabled, setting count to 0");
                 _computeManager.SetColliderCount(0);
                 return;
             }
             
             _colliders.Clear();
+
+            // Add dynamic colliders from tools
+            _colliders.AddRange(_dynamicColliders);
 
             // Add standard Unity colliders from the environment
             if (_settings.enableCollision)

@@ -408,24 +408,12 @@ void SolveVolumeConstraints(uint3 id : SV_DispatchThreadID)
         cross(p2.positionAndInvMass.xyz - p4.positionAndInvMass.xyz,
             p3.positionAndInvMass.xyz - p4.positionAndInvMass.xyz)) / 6.0;
 
-    float volumeRatio = currentVolume / vc.restVolume;
-    float pressureFactor = vc.pressureMultiplier;
+    // A simpler, more stable pressure model.
+    // Instead of a non-linear pressure factor that can explode under compression,
+    // we use a direct, linear error term. This is vastly more stable.
+    float C = (currentVolume - vc.restVolume) * vc.pressureMultiplier;
 
-    if (volumeRatio < 1.0) //Compression
-    {
-        pressureFactor *= 2.0 - volumeRatio;
-    }
-    else
-    {
-        pressureFactor *= 0.5;
-    }
-    
-    float C = currentVolume - vc.restVolume * pressureFactor;
-
-    if (abs(C) < 0.0001 * vc.restVolume) return;
-
-    // Clamp the constraint error to prevent explosions
-    C = clamp(C, -vc.restVolume * 0.5, vc.restVolume * 0.5);
+    if (abs(C) < 1e-6) return;
     
     // Weighted sum of squared gradient magnitudes
     float grad_sum = w1 * dot(grad1, grad1) + w2 * dot(grad2, grad2) + w3 * dot(grad3, grad3) + w4 * dot(grad4, grad4);
@@ -519,23 +507,14 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
             
             penetration = sdf_box_rotated(pos, box_center, box_halfExtents, box_rotation);
             
-            if (penetration < 0.0) // Any penetration needs correction
+            if (penetration < 0.0) 
             {
                 float3 localP = rotate_vector_by_quaternion(pos - box_center, quaternion_conjugate(box_rotation));
                 float3 closestPoint = clamp(localP, -box_halfExtents, box_halfExtents);
                 float3 localNormal = SafeNormalize(localP - closestPoint);
                 normal = rotate_vector_by_quaternion(localNormal, box_rotation);
                 
-                // Balanced correction - not too gentle, not too aggressive
-                float correctionMagnitude;
-                if (penetration < -0.05) // Deep penetration
-                {
-                    correctionMagnitude = min(-penetration * 0.6, 0.02); // Move out more aggressively
-                }
-                else // Shallow penetration
-                {
-                    correctionMagnitude = min(-penetration * 0.4, 0.01); // Gentler correction
-                }
+                float correctionMagnitude = -penetration * 0.8f;
                 
                 totalCorrection += normal * correctionMagnitude;
                 numCollisions++;
@@ -551,12 +530,7 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
             {
                 normal = plane_normal;
                 
-                // More aggressive for ground plane to prevent falling through
-                float correctionMagnitude;
-                if (penetration < -0.05)
-                    correctionMagnitude = min(-penetration * 0.8, 0.03);
-                else
-                    correctionMagnitude = min(-penetration * 0.5, 0.015);
+                float correctionMagnitude = -penetration * 0.8f;
                     
                 totalCorrection += normal * correctionMagnitude;
                 numCollisions++;
@@ -571,7 +545,7 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
             if (penetration < 0.0)
             {
                 normal = SafeNormalize(pos - center);
-                float correctionMagnitude = min(-penetration * 0.5, 0.015);
+                float correctionMagnitude = -penetration * 0.8f;
                 totalCorrection += normal * correctionMagnitude;
                 numCollisions++;
             }
@@ -580,59 +554,10 @@ void SolveGeneralCollisions(uint3 id : SV_DispatchThreadID)
     
     if (numCollisions > 0)
     {
-        float3 correction = totalCorrection / numCollisions;
-        
-        // Reasonable correction limits
-        float maxCorrection = 0.01; // 1cm max per frame
-        float correctionMag = length(correction);
-        if (correctionMag > maxCorrection)
-        {
-            correction = correction * (maxCorrection / correctionMag);
-        }
-        
-        collisionCorrections[p_idx] = correction;
+        // Average the corrections from all collisions
+        collisionCorrections[p_idx] = totalCorrection / numCollisions;
     }
 }
-// [numthreads(THREAD_GROUP_SIZE, 1, 1)]
-// void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
-// {
-//     uint p_idx = id.x;
-//     if (p_idx >= (uint)particleCount) return;
-//
-//     float3 correction = collisionCorrections[p_idx];
-//
-//     if (dot(correction, correction) > 1e-8)
-//     {
-//         Particle p = particles[p_idx];
-//         
-//         // Apply position correction
-//         p.positionAndInvMass.xyz += correction;
-//         
-//         float3 vel = p.velocity.xyz;
-//         float3 normal = SafeNormalize(correction);
-//         
-//         // Decompose velocity
-//         float normalSpeed = dot(vel, normal);
-//         float3 normalVel = normal * normalSpeed;
-//         float3 tangentVel = vel - normalVel;
-//         
-//         // Strong energy loss on collision
-//         if (normalSpeed < 0) 
-//         {
-//             normalVel *= 0.05; // 95% energy loss
-//         }
-//         
-//         // Strong friction on tangential velocity
-//         float frictionCoeff = 0.8; 
-//         tangentVel *= (1.0 - frictionCoeff);
-//         
-//         // Recombine with additional overall damping
-//         p.velocity.xyz = (normalVel + tangentVel) * 0.9; // Additional 10% velocity loss
-//         
-//         particles[p_idx] = p;
-//     }
-// }
-
 [numthreads(THREAD_GROUP_SIZE, 1, 1)]
 void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
 {
@@ -641,33 +566,49 @@ void ApplyCollisionCorrections(uint3 id : SV_DispatchThreadID)
 
     float3 correction = collisionCorrections[p_idx];
 
-    if (dot(correction, correction) > 1e-8)
+    // Check if there's a meaningful correction to apply
+    if (dot(correction, correction) > 1e-9)
     {
         Particle p = particles[p_idx];
-        
-        // Apply position correction
+
+        // 1. Calculate velocity *before* applying the position correction.
+        // This is the velocity of the particle as it was about to penetrate the collider.
+        float3 velocityBeforeCorrection = (p.positionAndInvMass.xyz - previousPositions[p_idx]) / deltaTime;
+
+        // 2. Apply the positional correction to resolve the penetration.
         p.positionAndInvMass.xyz += correction;
-        
-        float3 vel = p.velocity.xyz;
-        float3 normal = SafeNormalize(correction);
-        
-        float normalSpeed = dot(vel, normal);
-        
-        if (normalSpeed < 0) // Moving into surface
+
+        // 3. Calculate the new velocity based on friction and restitution.
+        float3 collisionNormal = SafeNormalize(correction);
+        float normalVelocityScalar = dot(velocityBeforeCorrection, collisionNormal);
+
+        // We only apply a response if the particle was moving *into* the surface.
+        if (normalVelocityScalar < 0)
         {
-            float3 normalVel = normal * normalSpeed;
-            float3 tangentVel = vel - normalVel;
+            float3 normalVelocity = collisionNormal * normalVelocityScalar;
+            float3 tangentVelocity = velocityBeforeCorrection - normalVelocity;
+
+            // Coefficients for restitution (bounciness) and friction.
+            float restitution = 0.05; // Low restitution to prevent bouncing.
+            float friction = 0.6;     // High friction to damp sliding.
             
-            // Moderate energy loss - enough to prevent bouncing
-            normalVel *= 0.01; 
-            tangentVel *= 0.5;
-            
-            p.velocity.xyz = normalVel + tangentVel;
+            // Apply restitution to the normal velocity (reflect and damp).
+            normalVelocity *= -restitution;
+
+            // Apply friction to the tangential velocity.
+            tangentVelocity *= (1.0 - friction);
+
+            // The new velocity is the combination of the modified components.
+            float3 newVelocity = normalVelocity + tangentVelocity;
+
+            // 4. Critically, we update `previousPosition` to reflect this new velocity.
+            // When the `UpdateVelocities` kernel runs next, it will calculate:
+            // v = (current_pos - new_prev_pos) / dt, which will equal our `newVelocity`.
+            // This correctly integrates the collision response into the simulation's velocity state.
+            previousPositions[p_idx] = p.positionAndInvMass.xyz - newVelocity * deltaTime;
         }
-        
-        // additional damping
-        p.velocity.xyz *= 0.8;
-        
+
+        // Write the updated particle data back to the buffer.
         particles[p_idx] = p;
     }
 }

@@ -51,6 +51,7 @@ namespace SoftBody.Scripts
         public float MovementSpeed => _sleepSystem?.CurrentSpeed ?? 0f;
         public float MemoryUsageMB => _simulation?.MemoryUsageMB ?? 0f;
         public bool HasPreGeneratedData => _hasPreGeneratedData && _preGeneratedPhysicsData.IsValid;
+        public CollisionSystem CollisionSystem => _collisionSystem;
         public SerializableSoftBodyData GetPreGeneratedData() => _preGeneratedPhysicsData;
 
         private void Start()

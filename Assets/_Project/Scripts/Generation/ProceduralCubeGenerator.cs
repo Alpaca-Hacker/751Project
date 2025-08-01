@@ -15,6 +15,13 @@ namespace SoftBody.Scripts.Generation
 
             // Generate cube data using the existing SoftBodyCubeGenerator logic
             SoftBodyCubeGenerator.GenerateCubeData(particles, constraints, volumeConstraints, indices, settings, transform);
+            
+            var uvs = new Vector2[particles.Count];
+            for (var i = 0; i < particles.Count; i++)
+            {
+                // Very simple UV mapping that will at least show the material
+                uvs[i] = new Vector2(1f, 1f); // Use a consistent part of the texture
+            }
 
             return new GenerationResult
             {
@@ -22,7 +29,7 @@ namespace SoftBody.Scripts.Generation
                 Constraints = constraints,
                 VolumeConstraints = volumeConstraints,
                 Indices = indices,
-                UVs = null // Procedural cubes don't need custom UVs
+                UVs = uvs
             };
         }
     }

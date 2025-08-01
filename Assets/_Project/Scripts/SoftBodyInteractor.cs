@@ -24,6 +24,7 @@ namespace SoftBody.Scripts
         private GameObject interactionIndicatorPrefab;
 
         [SerializeField] private bool showVisualFeedback = true;
+        [SerializeField] private bool showInstructions = true;
 
         private Camera _mainCamera;
         private bool _isGrabbing = false;
@@ -432,18 +433,22 @@ namespace SoftBody.Scripts
 
         private void OnGUI()
         {
-            GUILayout.BeginArea(new Rect(10, Screen.height - 200, 300, 190));
-            GUILayout.Label("Soft Body Interaction Controls:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
-            GUILayout.Label("Left Click: Poke");
-            GUILayout.Label("Shift + Left Click: Grab");
-            GUILayout.Label("Hold + Drag: Pull");
-            GUILayout.Label("Space + Mouse: Apply upward force");
-            GUILayout.Label("R: Reset");
-            GUILayout.Label("T: Reset velocities only");
-            GUILayout.Label($"Grabbing: {_isGrabbing}");
-            if (_isGrabbing && _grabbedParticleIndices != null)
-                GUILayout.Label($"Grabbed Particles: {_grabbedParticleIndices.Count}");
-            GUILayout.EndArea();
+            if (showInstructions)
+            {
+                GUILayout.BeginArea(new Rect(10, Screen.height - 200, 300, 190));
+                GUILayout.Label("Soft Body Interaction Controls:",
+                    new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+                GUILayout.Label("Left Click: Poke");
+                GUILayout.Label("Shift + Left Click: Grab");
+                GUILayout.Label("Hold + Drag: Pull");
+                GUILayout.Label("Space + Mouse: Apply upward force");
+                GUILayout.Label("R: Reset");
+                GUILayout.Label("T: Reset velocities only");
+                GUILayout.Label($"Grabbing: {_isGrabbing}");
+                if (_isGrabbing && _grabbedParticleIndices != null)
+                    GUILayout.Label($"Grabbed Particles: {_grabbedParticleIndices.Count}");
+                GUILayout.EndArea();
+            }
         }
     }
 }

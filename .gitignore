@@ -194,3 +194,5 @@ $RECYCLE.BIN/
 /Packages/com*
 /Assets/PBR_Toy*
 /Assets/Plush_*
+.aider*
+/Assets/Samples*
