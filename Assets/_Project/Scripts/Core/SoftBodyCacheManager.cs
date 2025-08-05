@@ -8,20 +8,20 @@ namespace SoftBody.Scripts.Core
     /// </summary>
     public static class SoftBodyCacheManager
     {
-        private static readonly List<SoftBodyPhysics> _cachedSoftBodies = new();
-        private static readonly List<Collider> _cachedColliders = new();
-        private static readonly HashSet<SoftBodyPhysics> _activeSoftBodies = new();
+        private static readonly List<SoftBodyPhysics> CachedSoftBodies = new();
+        private static readonly List<Collider> CachedColliders = new();
+        private static readonly HashSet<SoftBodyPhysics> ActiveSoftBodies = new();
         
         private static float _lastSoftBodyCacheUpdate = -1f;
         private static float _lastColliderCacheUpdate = -1f;
         
         // Cache update intervals (in seconds)
-        private const float SOFT_BODY_CACHE_INTERVAL = 2f;
-        private const float COLLIDER_CACHE_INTERVAL = 5f; // Colliders change less frequently
+        private const float SoftBodyCacheInterval = 2f;
+        private const float ColliderCacheInterval = 5f; // Colliders change less frequently
         
         // Spatial cache for performance
-        private static readonly Dictionary<Vector3Int, List<SoftBodyPhysics>> _spatialGrid = new();
-        private const float GRID_SIZE = 10f;
+        private static readonly Dictionary<Vector3Int, List<SoftBodyPhysics>> SpatialGrid = new();
+        private const float GridSize = 10f;
         
         
         /// <summary>
@@ -29,9 +29,8 @@ namespace SoftBody.Scripts.Core
         /// </summary>
         public static void RegisterSoftBody(SoftBodyPhysics softBody)
         {
-            if (softBody != null && !_activeSoftBodies.Contains(softBody))
+            if (softBody != null && ActiveSoftBodies.Add(softBody))
             {
-                _activeSoftBodies.Add(softBody);
                 InvalidateSoftBodyCache();
             }
         }
@@ -41,7 +40,7 @@ namespace SoftBody.Scripts.Core
         /// </summary>
         public static void UnregisterSoftBody(SoftBodyPhysics softBody)
         {
-            if (_activeSoftBodies.Remove(softBody))
+            if (ActiveSoftBodies.Remove(softBody))
             {
                 InvalidateSoftBodyCache();
             }
@@ -53,7 +52,7 @@ namespace SoftBody.Scripts.Core
         public static List<SoftBodyPhysics> GetCachedSoftBodies()
         {
             UpdateSoftBodyCacheIfNeeded();
-            return _cachedSoftBodies;
+            return CachedSoftBodies;
         }
 
         /// <summary>
@@ -65,15 +64,14 @@ namespace SoftBody.Scripts.Core
             
             var result = new List<SoftBodyPhysics>();
             var gridPos = WorldToGrid(position);
-            var gridRadius = Mathf.CeilToInt(radius / GRID_SIZE);
+            var gridRadius = Mathf.CeilToInt(radius / GridSize);
             
-            // Check surrounding grid cells
-            for (int x = -gridRadius; x <= gridRadius; x++)
+            for (var x = -gridRadius; x <= gridRadius; x++)
             {
-                for (int z = -gridRadius; z <= gridRadius; z++)
+                for (var z = -gridRadius; z <= gridRadius; z++)
                 {
                     var checkPos = gridPos + new Vector3Int(x, 0, z);
-                    if (_spatialGrid.TryGetValue(checkPos, out var bodies))
+                    if (SpatialGrid.TryGetValue(checkPos, out var bodies))
                     {
                         foreach (var body in bodies)
                         {
@@ -94,7 +92,7 @@ namespace SoftBody.Scripts.Core
         /// </summary>
         public static List<Collider> GetCachedColliders()
         {
-            if (_cachedColliders.Count == 0 || _lastColliderCacheUpdate < 0f)
+            if (CachedColliders.Count == 0 || _lastColliderCacheUpdate < 0f)
             {
                 UpdateColliderCache();
             }
@@ -103,7 +101,7 @@ namespace SoftBody.Scripts.Core
                 UpdateColliderCacheIfNeeded();
             }
 
-            return _cachedColliders;
+            return CachedColliders;
         }
 
         /// <summary>
@@ -133,7 +131,7 @@ namespace SoftBody.Scripts.Core
 
         private static void UpdateSoftBodyCacheIfNeeded()
         {
-            if (Time.time - _lastSoftBodyCacheUpdate >= SOFT_BODY_CACHE_INTERVAL)
+            if (Time.time - _lastSoftBodyCacheUpdate >= SoftBodyCacheInterval)
             {
                 UpdateSoftBodyCache();
             }
@@ -141,7 +139,7 @@ namespace SoftBody.Scripts.Core
 
         private static void UpdateColliderCacheIfNeeded()
         {
-            if (Time.time - _lastColliderCacheUpdate >= COLLIDER_CACHE_INTERVAL)
+            if (Time.time - _lastColliderCacheUpdate >= ColliderCacheInterval)
             {
                 UpdateColliderCache();
             }
@@ -149,14 +147,14 @@ namespace SoftBody.Scripts.Core
 
         private static void UpdateSoftBodyCache()
         {
-            _cachedSoftBodies.Clear();
+            CachedSoftBodies.Clear();
             
             // First, add registered soft bodies
-            foreach (var softBody in _activeSoftBodies)
+            foreach (var softBody in ActiveSoftBodies)
             {
                 if (softBody != null && softBody.enabled && softBody.gameObject.activeInHierarchy)
                 {
-                    _cachedSoftBodies.Add(softBody);
+                    CachedSoftBodies.Add(softBody);
                 }
             }
             
@@ -164,10 +162,10 @@ namespace SoftBody.Scripts.Core
             var foundBodies = Object.FindObjectsByType<SoftBodyPhysics>(FindObjectsSortMode.None);
             foreach (var body in foundBodies)
             {
-                if (!_cachedSoftBodies.Contains(body) && body.enabled && body.gameObject.activeInHierarchy)
+                if (!CachedSoftBodies.Contains(body) && body.enabled && body.gameObject.activeInHierarchy)
                 {
-                    _cachedSoftBodies.Add(body);
-                    _activeSoftBodies.Add(body); // Register it for next time
+                    CachedSoftBodies.Add(body);
+                    ActiveSoftBodies.Add(body);
                 }
             }
             
@@ -176,7 +174,7 @@ namespace SoftBody.Scripts.Core
 
         private static void UpdateColliderCache()
         {
-            _cachedColliders.Clear();
+            CachedColliders.Clear();
             var allColliders = Object.FindObjectsByType<Collider>(FindObjectsSortMode.None);
             
             foreach (var collider in allColliders)
@@ -184,7 +182,7 @@ namespace SoftBody.Scripts.Core
                 if (collider != null && collider.enabled && !collider.isTrigger 
                     && collider.GetComponent<SoftBodyPhysics>() == null)
                 {
-                    _cachedColliders.Add(collider);
+                    CachedColliders.Add(collider);
                 }
             }
             
@@ -193,18 +191,18 @@ namespace SoftBody.Scripts.Core
 
         private static void UpdateSpatialGrid()
         {
-            _spatialGrid.Clear();
+            SpatialGrid.Clear();
             
-            foreach (var body in _cachedSoftBodies)
+            foreach (var body in CachedSoftBodies)
             {
                 if (body != null)
                 {
                     var gridPos = WorldToGrid(body.transform.position);
-                    if (!_spatialGrid.ContainsKey(gridPos))
+                    if (!SpatialGrid.ContainsKey(gridPos))
                     {
-                        _spatialGrid[gridPos] = new List<SoftBodyPhysics>();
+                        SpatialGrid[gridPos] = new List<SoftBodyPhysics>();
                     }
-                    _spatialGrid[gridPos].Add(body);
+                    SpatialGrid[gridPos].Add(body);
                 }
             }
         }
@@ -212,15 +210,15 @@ namespace SoftBody.Scripts.Core
         private static Vector3Int WorldToGrid(Vector3 worldPos)
         {
             return new Vector3Int(
-                Mathf.FloorToInt(worldPos.x / GRID_SIZE),
+                Mathf.FloorToInt(worldPos.x / GridSize),
                 0, // We don't need Y for this demo
-                Mathf.FloorToInt(worldPos.z / GRID_SIZE)
+                Mathf.FloorToInt(worldPos.z / GridSize)
             );
         }
 
         private static void InvalidateSoftBodyCache()
         {
-            _lastSoftBodyCacheUpdate = -1f; // Force update on next request
+            _lastSoftBodyCacheUpdate = -1f; 
         }
 
         /// <summary>
@@ -228,10 +226,10 @@ namespace SoftBody.Scripts.Core
         /// </summary>
         public static void ClearAllCaches()
         {
-            _cachedSoftBodies.Clear();
-            _cachedColliders.Clear();
-            _activeSoftBodies.Clear();
-            _spatialGrid.Clear();
+            CachedSoftBodies.Clear();
+            CachedColliders.Clear();
+            ActiveSoftBodies.Clear();
+            SpatialGrid.Clear();
             _lastSoftBodyCacheUpdate = -1f;
             _lastColliderCacheUpdate = -1f;
         }

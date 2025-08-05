@@ -33,7 +33,7 @@ namespace SoftBody.Scripts.Core
             StartCoroutine(InitializeCacheAfterFrame());
         }
 
-        private System.Collections.IEnumerator InitializeCacheAfterFrame()
+        private static System.Collections.IEnumerator InitializeCacheAfterFrame()
         {
             // Wait one frame for all objects to be properly initialized
             yield return null;

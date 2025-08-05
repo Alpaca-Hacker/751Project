@@ -20,17 +20,17 @@ namespace SoftBody.Scripts.Dropper
         public float spawnInterval = 3f;
         public int maxToys = 8;
         
-        private int _currentToyCount = 0;
-        private ToyManager toyManager;
+        private int _currentToyCount;
+        private ToyManager _toyManager;
 
         private void Start()
         {
             // Create toy manager
-            toyManager = FindFirstObjectByType<ToyManager>();
-            if (toyManager == null)
+            _toyManager = FindFirstObjectByType<ToyManager>();
+            if (_toyManager == null)
             {
                 var managerObj = new GameObject("ToyManager");
-                toyManager = managerObj.AddComponent<ToyManager>();
+                _toyManager = managerObj.AddComponent<ToyManager>();
             }
             
             StartCoroutine(PusherCycle());
@@ -79,7 +79,7 @@ namespace SoftBody.Scripts.Dropper
             toy.transform.rotation = Random.rotation;
     
             // Register with toy manager - pass the actual pool
-            toyManager.RegisterToy(toy, this, toyPool);
+            _toyManager.RegisterToy(toy, this, toyPool);
     
             _currentToyCount++;
         }
@@ -127,14 +127,6 @@ namespace SoftBody.Scripts.Dropper
                 
                 yield return new WaitForSeconds(1f);
             }
-        }
-
-        private void OnGUI()
-        {
-            GUI.Label(new Rect(10, 10, 200, 20), $"Active Toys: {_currentToyCount}/{maxToys}");
-            GUI.Label(new Rect(10, 30, 200, 20), $"Pool Available: {toyPool.AvailableCount}/{toyPool.TotalCount}");
-            GUI.Label(new Rect(10, 50, 200, 20), $"Tracked by Manager: {toyManager.TrackedToyCount}");
-            GUI.Label(new Rect(10, 70, 200, 20), "Enhanced Coin Pusher");
         }
     }
 }

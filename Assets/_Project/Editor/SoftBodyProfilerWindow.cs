@@ -130,19 +130,19 @@ namespace _Project.Editor
             // Frame time breakdown box
             GUILayout.BeginVertical("box");
             EditorGUILayout.LabelField("Frame Time Breakdown:", EditorStyles.miniBoldLabel);
-            EditorGUILayout.LabelField($"Total Frame Time: {avgMetrics.totalFrameTime:F2} ms");
+            EditorGUILayout.LabelField($"Total Frame Time: {avgMetrics.TotalFrameTime:F2} ms");
 
             EditorGUI.indentLevel++;
             EditorGUILayout.LabelField(
-                $"Integration: {avgMetrics.integrationTime:F2} ms ({GetPercentage(avgMetrics.integrationTime, avgMetrics.totalFrameTime):F1}%)");
+                $"Integration: {avgMetrics.IntegrationTime:F2} ms ({GetPercentage(avgMetrics.IntegrationTime, avgMetrics.TotalFrameTime):F1}%)");
             EditorGUILayout.LabelField(
-                $"Constraint Solving: {avgMetrics.constraintSolvingTime:F2} ms ({GetPercentage(avgMetrics.constraintSolvingTime, avgMetrics.totalFrameTime):F1}%)");
+                $"Constraint Solving: {avgMetrics.ConstraintSolvingTime:F2} ms ({GetPercentage(avgMetrics.ConstraintSolvingTime, avgMetrics.TotalFrameTime):F1}%)");
             EditorGUILayout.LabelField(
-                $"Volume Constraints: {avgMetrics.volumeConstraintTime:F2} ms ({GetPercentage(avgMetrics.volumeConstraintTime, avgMetrics.totalFrameTime):F1}%)");
+                $"Volume Constraints: {avgMetrics.VolumeConstraintTime:F2} ms ({GetPercentage(avgMetrics.VolumeConstraintTime, avgMetrics.TotalFrameTime):F1}%)");
             EditorGUILayout.LabelField(
-                $"Collision: {avgMetrics.collisionTime:F2} ms ({GetPercentage(avgMetrics.collisionTime, avgMetrics.totalFrameTime):F1}%)");
+                $"Collision: {avgMetrics.CollisionTime:F2} ms ({GetPercentage(avgMetrics.CollisionTime, avgMetrics.TotalFrameTime):F1}%)");
             EditorGUILayout.LabelField(
-                $"Mesh Update: {avgMetrics.meshUpdateTime:F2} ms ({GetPercentage(avgMetrics.meshUpdateTime, avgMetrics.totalFrameTime):F1}%)");
+                $"Mesh Update: {avgMetrics.MeshUpdateTime:F2} ms ({GetPercentage(avgMetrics.MeshUpdateTime, avgMetrics.TotalFrameTime):F1}%)");
             EditorGUI.indentLevel--;
             GUILayout.EndVertical();
 
@@ -151,17 +151,17 @@ namespace _Project.Editor
             // System information box
             GUILayout.BeginVertical("box");
             EditorGUILayout.LabelField("System Information:", EditorStyles.miniBoldLabel);
-            EditorGUILayout.LabelField($"Active Particles: {avgMetrics.activeParticles:N0}");
-            EditorGUILayout.LabelField($"Active Constraints: {avgMetrics.activeConstraints:N0}");
-            EditorGUILayout.LabelField($"Solver Iterations: {avgMetrics.solverIterations}");
-            EditorGUILayout.LabelField($"Memory Usage: {avgMetrics.memoryUsageMB:F1} MB");
+            EditorGUILayout.LabelField($"Active Particles: {avgMetrics.ActiveParticles:N0}");
+            EditorGUILayout.LabelField($"Active Constraints: {avgMetrics.ActiveConstraints:N0}");
+            EditorGUILayout.LabelField($"Solver Iterations: {avgMetrics.SolverIterations}");
+            EditorGUILayout.LabelField($"Memory Usage: {avgMetrics.MemoryUsageMb:F1} MB");
 
-            if (avgMetrics.solverIterations > 0)
+            if (avgMetrics.SolverIterations > 0)
             {
                 EditorGUILayout.LabelField(
-                    $"Constraint Time/Iteration: {avgMetrics.constraintSolvingTime / avgMetrics.solverIterations:F2} ms");
+                    $"Constraint Time/Iteration: {avgMetrics.ConstraintSolvingTime / avgMetrics.SolverIterations:F2} ms");
                 EditorGUILayout.LabelField(
-                    $"Collision Time/Iteration: {avgMetrics.collisionTime / avgMetrics.solverIterations:F2} ms");
+                    $"Collision Time/Iteration: {avgMetrics.CollisionTime / avgMetrics.SolverIterations:F2} ms");
             }
 
             GUILayout.EndVertical();
@@ -181,44 +181,44 @@ namespace _Project.Editor
         {
             EditorGUILayout.LabelField("Optimization Recommendations", EditorStyles.boldLabel);
 
-            if (metrics.totalFrameTime > 16.67f)
+            if (metrics.TotalFrameTime > 16.67f)
             {
                 EditorGUILayout.HelpBox(
-                    $"Frame time is {metrics.totalFrameTime:F1}ms (target: <16.7ms for 60 FPS). Consider optimizations below.",
+                    $"Frame time is {metrics.TotalFrameTime:F1}ms (target: <16.7ms for 60 FPS). Consider optimizations below.",
                     MessageType.Warning);
             }
 
-            if (metrics.constraintSolvingTime > metrics.totalFrameTime * 0.6f)
+            if (metrics.ConstraintSolvingTime > metrics.TotalFrameTime * 0.6f)
             {
                 EditorGUILayout.HelpBox(
                     "Constraint solving is the main bottleneck. Try:\n• Graph coloring optimization\n• Reduce solver iterations\n• Implement constraint LOD",
                     MessageType.Info);
             }
 
-            if (metrics.meshUpdateTime > 2f)
+            if (metrics.MeshUpdateTime > 2f)
             {
                 EditorGUILayout.HelpBox(
                     "Mesh updates are expensive. Try:\n• Reduce mesh update frequency\n• Use async GPU readback\n• Implement mesh LOD",
                     MessageType.Info);
             }
 
-            if (metrics.collisionTime > metrics.totalFrameTime * 0.3f)
+            if (metrics.CollisionTime > metrics.TotalFrameTime * 0.3f)
             {
                 EditorGUILayout.HelpBox(
                     "Collision solving is expensive. Try:\n• Reduce collision iterations\n• Optimize collider count\n• Use spatial partitioning",
                     MessageType.Info);
             }
 
-            if (metrics.activeParticles > 1000)
+            if (metrics.ActiveParticles > 1000)
             {
                 EditorGUILayout.HelpBox(
-                    $"High particle count ({metrics.activeParticles:N0}). Consider:\n• Distance-based LOD\n• Particle culling\n• Sleep system",
+                    $"High particle count ({metrics.ActiveParticles:N0}). Consider:\n• Distance-based LOD\n• Particle culling\n• Sleep system",
                     MessageType.Info);
             }
 
-            if (metrics.totalFrameTime <= 16.67f && metrics.constraintSolvingTime <= metrics.totalFrameTime * 0.6f &&
-                metrics.meshUpdateTime <= 2f && metrics.collisionTime <= metrics.totalFrameTime * 0.3f &&
-                metrics.activeParticles <= 1000)
+            if (metrics.TotalFrameTime <= 16.67f && metrics.ConstraintSolvingTime <= metrics.TotalFrameTime * 0.6f &&
+                metrics.MeshUpdateTime <= 2f && metrics.CollisionTime <= metrics.TotalFrameTime * 0.3f &&
+                metrics.ActiveParticles <= 1000)
             {
                 EditorGUILayout.HelpBox("Performance looks good! Frame time is within acceptable limits.",
                     MessageType.Info);

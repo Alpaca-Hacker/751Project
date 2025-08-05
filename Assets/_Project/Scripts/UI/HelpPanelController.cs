@@ -4,11 +4,11 @@ namespace SoftBody.Scripts.UI
 {
     public class HelpPanelController : MonoBehaviour
     {
-        private System.Action closeCallback;
+        private System.Action _closeCallback;
         
         public void Initialize(System.Action onClose)
         {
-            closeCallback = onClose;
+            _closeCallback = onClose;
         }
         
         private void Update()
@@ -16,7 +16,7 @@ namespace SoftBody.Scripts.UI
             // Close help panel with Escape key
             if (Input.GetKeyDown(KeyCode.Escape) && gameObject.activeInHierarchy)
             {
-                closeCallback?.Invoke();
+                _closeCallback?.Invoke();
             }
             
             // Close help panel when clicking outside (optional)
@@ -26,7 +26,7 @@ namespace SoftBody.Scripts.UI
                         GetComponent<RectTransform>(), 
                         Input.mousePosition))
                 {
-                    closeCallback?.Invoke();
+                    _closeCallback?.Invoke();
                 }
             }
         }

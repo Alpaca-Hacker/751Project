@@ -4,7 +4,7 @@ namespace SoftBody.Scripts.Models
 {
     public struct Particle
     {
-        public Vector4 _positionAndInvMass; // x, y, z = position, w = invMass
+        public Vector4 PositionAndInvMass; // x, y, z = position, w = invMass
         public Vector4 Velocity; // x, y, z = velocity, w = padding
         public Vector4 Force; // x, y, z = force, w = padding
 
@@ -12,19 +12,19 @@ namespace SoftBody.Scripts.Models
         // We use ref to modify the value directly in the struct.
         public Vector3 Position
         {
-            get => new(_positionAndInvMass.x, _positionAndInvMass.y, _positionAndInvMass.z);
+            get => new(PositionAndInvMass.x, PositionAndInvMass.y, PositionAndInvMass.z);
             set
             {
-                _positionAndInvMass.x = value.x;
-                _positionAndInvMass.y = value.y;
-                _positionAndInvMass.z = value.z;
+                PositionAndInvMass.x = value.x;
+                PositionAndInvMass.y = value.y;
+                PositionAndInvMass.z = value.z;
             }
         }
 
         public float InvMass
         {
-            get => _positionAndInvMass.w;
-            set => _positionAndInvMass.w = value;
+            get => PositionAndInvMass.w;
+            set => PositionAndInvMass.w = value;
         }
     }
 }

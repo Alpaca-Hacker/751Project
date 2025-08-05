@@ -6,8 +6,8 @@ namespace SoftBody.Scripts.Core
 {
     public class SoftBodySimulation
     {
-        private ComputeShaderManager _computeManager;
-        private BufferManager _bufferManager;
+        private readonly ComputeShaderManager _computeManager;
+        private readonly BufferManager _bufferManager;
         private readonly SoftBodySettings _settings;
         
         private List<Particle> _particles;
@@ -18,7 +18,7 @@ namespace SoftBody.Scripts.Core
         public int ParticleCount => _particles?.Count ?? 0;
         public int ConstraintCount => _constraints?.Count ?? 0;
         public int VolumeConstraintCount => _volumeConstraints?.Count ?? 0;
-        public float MemoryUsageMB => _bufferManager.GetTotalMemoryUsageMB();
+        public float MemoryUsageMb => _bufferManager.GetTotalMemoryUsageMb();
         
         public SoftBodySimulation(SoftBodySettings settings, ComputeShaderManager computeManager, BufferManager bufferManager)
         {

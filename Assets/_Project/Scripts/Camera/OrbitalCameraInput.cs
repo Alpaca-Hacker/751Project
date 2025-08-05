@@ -60,19 +60,19 @@ namespace SoftBody.Scripts
         }
         
 
-        private void OnGUI()
-        {
-            GUILayout.BeginArea(new Rect(10, 10, 300, 100));
-            GUILayout.Label("Camera Controls:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
-            GUILayout.Label("Right-click + drag: Rotate camera");
-            GUILayout.Label("Mouse wheel: Zoom");
-            GUILayout.Label("Left-click: Interact with soft body");
-            if (_orbital)
-            {
-                GUILayout.Label($"Radius: {_orbital.Radius:F1}");
-            }
-
-            GUILayout.EndArea();
-        }
+        // private void OnGUI()
+        // {
+        //     GUILayout.BeginArea(new Rect(10, 10, 300, 100));
+        //     GUILayout.Label("Camera Controls:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+        //     GUILayout.Label("Right-click + drag: Rotate camera");
+        //     GUILayout.Label("Mouse wheel: Zoom");
+        //     GUILayout.Label("Left-click: Interact with soft body");
+        //     if (_orbital)
+        //     {
+        //         GUILayout.Label($"Radius: {_orbital.Radius:F1}");
+        //     }
+        //
+        //     GUILayout.EndArea();
+        // }
     }
 }

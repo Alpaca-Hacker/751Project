@@ -10,17 +10,17 @@ namespace SoftBody.Scripts.Pooling
         public bool returnOnFallBelow = true;
         public float fallThreshold = -20f;
     
-        protected GenericObjectPool _pool;
-        protected float _activeTime = 0f;
+        protected GenericObjectPool Pool;
+        protected float ActiveTime;
     
         public virtual void Initialize(GenericObjectPool pool)
         {
-            _pool = pool;
+            Pool = pool;
         }
     
         public virtual void OnGetFromPool()
         {
-            _activeTime = 0f;
+            ActiveTime = 0f;
         }
     
         public virtual void OnReturnToPool()
@@ -30,9 +30,9 @@ namespace SoftBody.Scripts.Pooling
     
         public virtual void ReturnToPool()
         {
-            if (_pool != null)
+            if (Pool != null)
             {
-                _pool.ReturnObject(gameObject);
+                Pool.ReturnObject(gameObject);
             }
         }
     
@@ -40,10 +40,10 @@ namespace SoftBody.Scripts.Pooling
         {
             if (!gameObject.activeInHierarchy) return;
         
-            _activeTime += Time.deltaTime;
+            ActiveTime += Time.deltaTime;
         
             // Auto return conditions
-            if (enableAutoReturn && _activeTime > autoReturnTime)
+            if (enableAutoReturn && ActiveTime > autoReturnTime)
             {
                 ReturnToPool();
                 return;

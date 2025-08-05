@@ -159,8 +159,8 @@ namespace SoftBody.Scripts.Testing
         private void UpdateObjectCounts()
         {
             // Count active soft bodies in scene
-            int activeCount = _allSoftBodies.Count(sb => sb != null && sb.enabled && sb.gameObject.activeInHierarchy);
-            int totalCount = _allSoftBodies.Count;
+            var activeCount = _allSoftBodies.Count(sb => sb != null && sb.enabled && sb.gameObject.activeInHierarchy);
+            var totalCount = _allSoftBodies.Count;
 
             if (objectCountText != null)
             {
@@ -185,7 +185,7 @@ namespace SoftBody.Scripts.Testing
                 {
                     totalParticles += softBody.ParticleCount;
                     totalConstraints += softBody.ConstraintCount;
-                    totalMemory += softBody.MemoryUsageMB;
+                    totalMemory += softBody.MemoryUsageMb;
                 }
             }
 
@@ -209,8 +209,8 @@ namespace SoftBody.Scripts.Testing
         {
             if (sleepingObjectsText == null && activeObjectsText == null) return;
 
-            int sleepingCount = 0;
-            int activeCount = 0;
+            var sleepingCount = 0;
+            var activeCount = 0;
 
             foreach (var softBody in _allSoftBodies)
             {
@@ -233,7 +233,7 @@ namespace SoftBody.Scripts.Testing
         private void UpdatePoolMetrics()
         {
             // Try to find pool information
-            var toyPool = FindFirstObjectByType<SoftBody.Scripts.Pooling.PreGeneratedToyPool>();
+            var toyPool = FindFirstObjectByType<Pooling.PreGeneratedToyPool>();
             
             if (toyPool != null)
             {
@@ -279,7 +279,7 @@ namespace SoftBody.Scripts.Testing
             {
                 if (softBody != null && softBody.enabled)
                 {
-                    total += softBody.MemoryUsageMB;
+                    total += softBody.MemoryUsageMb;
                 }
             }
             return total;

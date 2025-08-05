@@ -38,7 +38,7 @@ namespace SoftBody.Scripts
         
         private Vector3 _velocity;
         private Vector3 _lastPosition;
-        private List<SoftBodyPhysics> _detectedToys = new();
+        private readonly List<SoftBodyPhysics> _detectedToys = new();
         private Bounds _pusherBounds;
         
         private void Start()
@@ -46,10 +46,10 @@ namespace SoftBody.Scripts
             _lastPosition = transform.position;
     
             // Get pusher bounds
-            var renderer = GetComponent<Renderer>();
-            if (renderer != null)
+            var rendererComponent = GetComponent<Renderer>();
+            if (rendererComponent != null)
             {
-                _pusherBounds = renderer.bounds;
+                _pusherBounds = rendererComponent.bounds;
             }
             else
             {
@@ -170,11 +170,11 @@ namespace SoftBody.Scripts
                 // Determine which zone the toy is in and apply appropriate forces
                 if (enableCarrying && IsInCarryZone(toyPos, pusherPos, _pusherBounds))
                 {
-                    ApplyCarryingForce(toy, relativePos);
+                    ApplyCarryingForce(toy);
                 }
                 else if (enableGentlePushing && IsInPushZone(toyPos, pusherPos, _pusherBounds))
                 {
-                    ApplyPushingForce(toy, relativePos);
+                    ApplyPushingForce(toy);
                 }
                 else if (IsInSideZone(toyPos, pusherPos, _pusherBounds))
                 {
@@ -224,25 +224,22 @@ namespace SoftBody.Scripts
             return pushBounds.Contains(toyPos);
         }
 
-        private void ApplyCarryingForce(SoftBodyPhysics toy, Vector3 relativePos)
+        private void ApplyCarryingForce(SoftBodyPhysics toy)
         {
             var pusherMovement = _velocity;
-    
-            // Moderate horizontal forces - not too weak, not too strong
+            
             var horizontalForce = new Vector3(pusherMovement.x, 0, pusherMovement.z) * (carryForce * 2f);
     
-            var toyBounds = toy.GetComponent<MeshFilter>()?.mesh?.bounds ?? new Bounds(Vector3.zero, Vector3.one);
+            _ = toy.GetComponent<MeshFilter>()?.mesh?.bounds ?? new Bounds(Vector3.zero, Vector3.one);
             var toyCenter = toy.transform.position;
-    
-            // Apply to fewer points with gentler forces
+            
             toy.ApplyContinuousForce(toyCenter, horizontalForce, 0.8f);
-    
-            // Very gentle upward support
+            
             var supportForce = Vector3.up * (carryForce * 0.3f);
             toy.ApplyContinuousForce(toyCenter, supportForce, 0.3f);
         }
 
-        private void ApplyPushingForce(SoftBodyPhysics toy, Vector3 relativePos)
+        private void ApplyPushingForce(SoftBodyPhysics toy)
         {
             var pushDirection = GetPushDirection();
     
@@ -254,8 +251,7 @@ namespace SoftBody.Scripts
                 var force = pushDirection * (pushForce * 3f * forceMultiplier);
         
                 var toyCenter = toy.transform.position;
-        
-                // Single application point with moderate force
+                
                 toy.ApplyContinuousForce(toyCenter, force, 1.0f);
             }
         }

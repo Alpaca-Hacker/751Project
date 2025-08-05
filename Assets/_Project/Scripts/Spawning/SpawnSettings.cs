@@ -6,9 +6,9 @@ namespace SoftBody.Scripts.Spawning
     public class SpawnSettings
     {
         [Header("Spawn Timing")]
-        public bool autoSpawn = false;
+        public bool autoSpawn;
         public float spawnInterval = 1f;
-        public float spawnDelay = 0f;
+        public float spawnDelay;
     
         [Header("Spawn Limits")]
         public int maxActiveObjects = 50;
@@ -18,13 +18,13 @@ namespace SoftBody.Scripts.Spawning
         public Transform[] spawnPoints;
         public bool randomizeSpawnPoint = true;
         public Vector3 spawnAreaSize = Vector3.one;
-        public bool useSpawnArea = false;
+        public bool useSpawnArea;
     
         [Header("Spawn Variation")]
         public bool randomizeRotation = true;
         public Vector3 initialVelocityMin = Vector3.zero;
         public Vector3 initialVelocityMax = Vector3.zero;
-        public bool addRandomTorque = false;
+        public bool addRandomTorque;
         public float maxTorque = 10f;
     }
 }

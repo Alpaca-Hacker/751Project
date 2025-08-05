@@ -61,13 +61,13 @@ namespace SoftBody.Scripts
             Debug.Log($"Switched to {_cameraNames[index]} camera");
         }
     
-        private void OnGUI()
-        {
-            if (_currentCameraIndex < _cameraNames.Length)
-            {
-                GUI.Label(new Rect(10, 10, 300, 20), 
-                    $"Camera: {_cameraNames[_currentCameraIndex]} (Tab/1-3 to switch)");
-            }
-        }
+        // private void OnGUI()
+        // {
+        //     if (_currentCameraIndex < _cameraNames.Length)
+        //     {
+        //         GUI.Label(new Rect(10, 10, 300, 20), 
+        //             $"Camera: {_cameraNames[_currentCameraIndex]} (Tab/1-3 to switch)");
+        //     }
+        // }
     }
 }

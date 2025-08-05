@@ -156,7 +156,7 @@ namespace SoftBody.Scripts.Core
             }
         }
 
-        private Bounds GetEstimatedBounds(SoftBodyPhysics softBody)
+        private static Bounds GetEstimatedBounds(SoftBodyPhysics softBody)
         {
             var settings = softBody.settings;
             var transform = softBody.transform;
@@ -175,7 +175,7 @@ namespace SoftBody.Scripts.Core
             return new Bounds(transform.position, Vector3.one);
         }
 
-        private SDFCollider? ConvertToSDFCollider(Collider col)
+        private static SDFCollider? ConvertToSDFCollider(Collider col)
         {
             if (col.CompareTag("Floor"))
             {

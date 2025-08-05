@@ -1,9 +1,10 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace SoftBody.Scripts.Core
 {
-    public class BufferManager : System.IDisposable
+    public class BufferManager : IDisposable
     {
         private readonly Dictionary<string, ComputeBuffer> _buffers = new();
         private readonly Dictionary<string, int> _bufferSizes = new();
@@ -58,9 +59,9 @@ namespace SoftBody.Scripts.Core
             buffer?.GetData(outputArray);
         }
         
-        public float GetTotalMemoryUsageMB()
+        public float GetTotalMemoryUsageMb()
         {
-            float totalBytes = 0f;
+            var totalBytes = 0f;
             foreach (var buffer in _buffers.Values)
             {
                 if (buffer != null && buffer.IsValid())
@@ -73,12 +74,21 @@ namespace SoftBody.Scripts.Core
         
         public void Dispose()
         {
-            foreach (var buffer in _buffers.Values)
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
             {
-                buffer?.Release();
+                foreach (var buffer in _buffers.Values)
+                {
+                    buffer?.Release();
+                }
+                _buffers.Clear();
+                _bufferSizes.Clear();
             }
-            _buffers.Clear();
-            _bufferSizes.Clear();
         }
     }
 }

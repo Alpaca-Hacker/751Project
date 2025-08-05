@@ -18,7 +18,7 @@ namespace SoftBody.Scripts
         [Header("Initial Physics")] public Vector3 initialVelocityMin = Vector3.zero;
         public Vector3 initialVelocityMax = new Vector3(2f, 0f, 2f);
 
-        [Header("Events")] public UnityEngine.Events.UnityEvent<GameObject> OnObjectSpawned;
+        [Header("Events")] public UnityEngine.Events.UnityEvent<GameObject> onObjectSpawned;
 
         public int ActiveObjectCount => pool != null ? pool.ActiveCount : 0;
         public int TotalObjectCount => pool != null ? pool.TotalCount : 0;
@@ -83,7 +83,7 @@ namespace SoftBody.Scripts
             // Apply initial velocity after ensuring clean state
             StartCoroutine(ApplyInitialVelocityDelayed(obj));
 
-            OnObjectSpawned?.Invoke(obj);
+            onObjectSpawned?.Invoke(obj);
 
             return obj;
         }

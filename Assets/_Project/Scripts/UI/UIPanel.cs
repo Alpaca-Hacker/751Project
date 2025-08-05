@@ -35,12 +35,12 @@ namespace SoftBody.Scripts.UI
         private void AddDropShadowEffect()
         {
             // Create shadow behind panel
-            var shadowGO = new GameObject("PanelShadow");
-            shadowGO.transform.SetParent(transform);
-            shadowGO.transform.SetAsFirstSibling(); // Behind the panel
+            var shadowGo = new GameObject("PanelShadow");
+            shadowGo.transform.SetParent(transform);
+            shadowGo.transform.SetAsFirstSibling(); // Behind the panel
 
-            var shadowRect = shadowGO.AddComponent<RectTransform>();
-            var shadowImage = shadowGO.AddComponent<Image>();
+            var shadowRect = shadowGo.AddComponent<RectTransform>();
+            var shadowImage = shadowGo.AddComponent<Image>();
 
             // Position shadow slightly offset
             shadowRect.anchorMin = Vector2.zero;

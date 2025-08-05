@@ -4,9 +4,9 @@ namespace SoftBody.Scripts
 {
     public class SoftBodyDebugger : MonoBehaviour
     {
-        [Header("Debug Visualization")] public bool showParticles = false;
-        public bool showConstraints = false;
-        public bool showForces = false;
+        [Header("Debug Visualization")] public bool showParticles;
+        public bool showConstraints;
+        public bool showForces;
         public float particleSize = 0.1f;
         public Color particleColor = Color.red;
         public Color constraintColor = Color.green;

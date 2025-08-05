@@ -7,8 +7,8 @@ namespace SoftBody.Scripts.Pooling
     {
         private PreGeneratedToyPool _pool;
         private SoftBodyPhysics _softBody;
-        private float _activeTime = 0f;
-        private bool _hasBeenReturned = false; // Prevent double returns
+        private float _activeTime;
+        private bool _hasBeenReturned; // Prevent double returns
     
         [Header("Auto Return Settings")]
         public float autoReturnTime = 30f;
@@ -37,7 +37,7 @@ namespace SoftBody.Scripts.Pooling
             if (_softBody != null)
             {
                 _softBody.WakeUp();
-                _softBody.settings.SkipUpdate = false;
+                _softBody.settings.skipUpdate = false;
             }
         }
     
@@ -47,7 +47,7 @@ namespace SoftBody.Scripts.Pooling
         
             if (_softBody != null)
             {
-                _softBody.settings.SkipUpdate = true;
+                _softBody.settings.skipUpdate = true;
             }
         }
     

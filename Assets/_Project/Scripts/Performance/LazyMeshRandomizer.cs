@@ -7,8 +7,8 @@ namespace SoftBody.Scripts.Performance
     {
         private SoftBodyPhysics _softBody;
         private Mesh[] _availableMeshes;
-        private bool _isRandomizing = false;
-        private bool _hasBeenRandomized = false;
+        private bool _isRandomizing;
+        private bool _hasBeenRandomized;
         
         [Header("Performance Settings")]
         public float maxRandomizationDelay = 0.2f;

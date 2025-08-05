@@ -10,9 +10,9 @@ namespace SoftBody.Scripts.Core
         private BufferManager _bufferManager;
 
         // Cache thread group sizes
-        private const int THREAD_GROUP_SIZE = 64;
+        private const int ThreadGroupSize = 64;
         
-        private bool _buffersAreBound = false;
+        private bool _buffersAreBound;
 
         public ComputeShaderManager(ComputeShader computeShader)
         {
@@ -60,7 +60,7 @@ namespace SoftBody.Scripts.Core
             var vertexBuffer = _bufferManager.GetBuffer("vertices");
             var previousPositionsBuffer = _bufferManager.GetBuffer("previousPositions");
             var volumeConstraintBuffer = _bufferManager.GetBuffer("volumeConstraints");
-            var debugBuffer = _bufferManager.GetBuffer("debug");
+            _bufferManager.GetBuffer("debug");
             var colliderBuffer = _bufferManager.GetBuffer("colliders");
             var collisionCorrectionsBuffer = _bufferManager.GetBuffer("collisionCorrections");
 
@@ -355,21 +355,21 @@ namespace SoftBody.Scripts.Core
                 return;
             }
 
-            // DispatchDebugValidation();
-            //
-            // var debugData = GetDebugData();
-            // if (debugData[0] > 0 || debugData[1] > 0) // NaN or Inf detected
-            // {
-            //     Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, " +
-            //                    $"Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, " +
-            //                    $"First Bad Particle Index: {debugData[3]}");
-            // }
+            DispatchDebugValidation();
+            
+            var debugData = GetDebugData();
+            if (debugData[0] > 0 || debugData[1] > 0) // NaN or Inf detected
+            {
+                Debug.LogError($"INSTABILITY DETECTED! NaN Count: {debugData[0]}, " +
+                               $"Inf Count: {debugData[1]}, Max Speed: {debugData[2]:F2}, " +
+                               $"First Bad Particle Index: {debugData[3]}");
+            }
         }
 
         // Helper methods
-        private int CalculateThreadGroups(int elementCount)
+        private static int CalculateThreadGroups(int elementCount)
         {
-            return Mathf.CeilToInt((float)elementCount / THREAD_GROUP_SIZE);
+            return Mathf.CeilToInt((float)elementCount / ThreadGroupSize);
         }
 
         // Add these methods to ComputeShaderManager.cs
@@ -406,18 +406,6 @@ namespace SoftBody.Scripts.Core
             // Only rebind collider buffer to kernels that use it
             _computeShader.SetBuffer(_kernels["SolveCollisions"], Constants.Colliders, colliderBuffer);
             _computeShader.SetBuffer(_kernels["ApplyDamping"], Constants.Colliders, colliderBuffer);
-        }
-
-        public void LogThreadEfficiency(string systemName, int actualCount, int threadGroups)
-        {
-            var dispatchedThreads = threadGroups * THREAD_GROUP_SIZE;
-            var efficiency = (float)actualCount / dispatchedThreads * 100f;
-
-            if (Time.frameCount % 300 == 0) // Log every 5 seconds at 60fps
-            {
-                Debug.Log($"{systemName} Thread Efficiency: {actualCount} elements, " +
-                          $"{dispatchedThreads} threads ({efficiency:F1}% efficient)");
-            }
         }
     }
 }

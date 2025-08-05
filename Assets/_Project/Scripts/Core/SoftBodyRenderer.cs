@@ -15,9 +15,9 @@ namespace SoftBody.Scripts.Core
         
         private AsyncGPUReadbackRequest _readbackRequest;
         private bool _isReadbackPending;
-        private float _lastMeshUpdateTime = 0f;
+        private float _lastMeshUpdateTime;
         
-        private const float MIN_MESH_UPDATE_INTERVAL = 0.016f;
+        private const float MinMeshUpdateInterval = 0.016f;
 
         public SoftBodyRenderer(Transform transform, SoftBodySettings settings)
         {
@@ -51,7 +51,7 @@ namespace SoftBody.Scripts.Core
             };
 
             var vertices = new Vector3[data.Particles.Count];
-            for (int i = 0; i < data.Particles.Count; i++)
+            for (var i = 0; i < data.Particles.Count; i++)
             {
                 vertices[i] = _transform.InverseTransformPoint(data.Particles[i].Position);
             }
@@ -109,7 +109,7 @@ namespace SoftBody.Scripts.Core
             }
     
             // Throttle mesh updates to prevent GPU overload
-            if (Time.time - _lastMeshUpdateTime < MIN_MESH_UPDATE_INTERVAL)
+            if (Time.time - _lastMeshUpdateTime < MinMeshUpdateInterval)
             {
                 return;
             }
@@ -144,14 +144,6 @@ namespace SoftBody.Scripts.Core
 
             var data = _readbackRequest.GetData<float>();
             UpdateMeshFromGPUData(data);
-        }
-
-        public void SetVertexBufferOnMaterial(ComputeBuffer vertexBuffer, Material material)
-        {
-            if (material != null && vertexBuffer != null)
-            {
-                material.SetBuffer(Constants.Vertices, vertexBuffer);
-            }
         }
 
         private void UpdateMeshFromGPUData(NativeArray<float> vertexData)
@@ -215,10 +207,12 @@ namespace SoftBody.Scripts.Core
             }
         }
 
-        private Material CreateFallbackMaterial()
+        private static Material CreateFallbackMaterial()
         {
-            var fallbackMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            fallbackMaterial.color = Color.cyan;
+            var fallbackMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = Color.cyan
+            };
             return fallbackMaterial;
         }
 
@@ -231,7 +225,7 @@ namespace SoftBody.Scripts.Core
             }
         }
 
-        private bool IsValidPosition(Vector3 pos)
+        private static bool IsValidPosition(Vector3 pos)
         {
             return !float.IsNaN(pos.x) && !float.IsNaN(pos.y) && !float.IsNaN(pos.z) &&
                    !float.IsInfinity(pos.x) && !float.IsInfinity(pos.y) && !float.IsInfinity(pos.z);

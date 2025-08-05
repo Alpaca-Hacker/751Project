@@ -35,32 +35,25 @@ namespace SoftBody.Scripts.Core
                 AllSleepSystems.Add(this);
             }
         }
-
-        /// <summary>
-        /// Call this method from the main Update loop.
-        /// </summary>
+        
         public void Update(float deltaTime)
         {
             _checkTimer += deltaTime;
-
-            // Only check for sleep state periodically to save performance
-            if (_checkTimer < 0.1f) // Check 10 times per second
+            
+            if (_checkTimer < 0.1f)
             {
                 return;
             }
-
-            // Calculate movement speed
+            
             var currentPosition = _transform.position;
             _currentSpeed = Vector3.Distance(currentPosition, _lastPosition) / _checkTimer;
             _lastPosition = currentPosition;
             
-            // Reset the check timer
             _checkTimer = 0f;
-
-            // Update sleep state based on speed
+            
             if (_currentSpeed < _settings.sleepVelocityThreshold)
             {
-                _sleepTimer += 0.1f; // Add the interval time
+                _sleepTimer += 0.1f;
                 if (_sleepTimer > _settings.sleepTimeThreshold && !_isAsleep)
                 {
                     GoToSleep();
@@ -68,14 +61,12 @@ namespace SoftBody.Scripts.Core
             }
             else
             {
-                // The body is moving
                 if (_isAsleep)
                 {
                     WakeUp();
                 }
                 else
                 {
-                    // If it was previously still but now moving significantly, wake up others
                     if (_currentSpeed > _settings.sleepVelocityThreshold * 4f)
                     {
                         WakeUpNearby();
@@ -86,9 +77,6 @@ namespace SoftBody.Scripts.Core
             }
         }
         
-        /// <summary>
-        /// Forces the soft body to wake up.
-        /// </summary>
         public void WakeUp()
         {
             if (!_isAsleep) return;
@@ -101,9 +89,6 @@ namespace SoftBody.Scripts.Core
             }
         }
         
-        /// <summary>
-        /// Call this when the soft body is destroyed or disabled to clean up.
-        /// </summary>
         public void Unregister()
         {
             if (AllSleepSystems.Contains(this))
@@ -111,10 +96,7 @@ namespace SoftBody.Scripts.Core
                 AllSleepSystems.Remove(this);
             }
         }
-
-        /// <summary>
-        /// Handles external collision events to wake the body up.
-        /// </summary>
+        
         public void OnCollisionImpact(float impactForce)
         {
             if (_isAsleep && impactForce > 0.5f) // Threshold for a significant impact
@@ -139,15 +121,13 @@ namespace SoftBody.Scripts.Core
         private void WakeUpNearby()
         {
             if (!_settings.enableProximityWake) return;
-    
-            // Throttle proximity checks
+            
             if (Time.time - _lastProximityCheckTime < 0.1f) return;
             _lastProximityCheckTime = Time.time;
 
             var position = _transform.position;
             var radius = _settings.proximityWakeRadius;
-    
-            // Use spatial cache instead of checking all sleep systems
+            
             var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(position, radius);
     
             foreach (var body in nearbySoftBodies)

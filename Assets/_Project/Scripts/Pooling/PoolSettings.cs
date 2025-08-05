@@ -16,6 +16,6 @@ namespace SoftBody.Scripts.Pooling
         [Header("Spawn Settings")]
         public bool resetTransformOnGet = true;
         public bool resetPhysicsOnGet = true;
-        public bool randomizeRotationOnGet = false;
+        public bool randomizeRotationOnGet;
     }
 }

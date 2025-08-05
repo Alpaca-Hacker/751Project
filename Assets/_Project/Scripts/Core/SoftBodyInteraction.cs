@@ -10,14 +10,12 @@ namespace SoftBody.Scripts.Core
         private readonly SoftBodySimulation _simulation;
         private readonly SleepSystem _sleepSystem;
         private readonly SoftBodySettings _settings;
-        private readonly Transform _transform;
 
-        public SoftBodyInteraction(SoftBodySimulation simulation, SleepSystem sleepSystem, SoftBodySettings settings, Transform transform)
+        public SoftBodyInteraction(SoftBodySimulation simulation, SleepSystem sleepSystem, SoftBodySettings settings)
         {
             _simulation = simulation;
             _sleepSystem = sleepSystem;
             _settings = settings;
-            _transform = transform;
         }
 
         public void PokeAtPosition(Vector3 worldPosition, Vector3 impulse, float radius = 1f)

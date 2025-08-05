@@ -10,13 +10,13 @@ namespace SoftBody.Scripts.Pooling
     public PoolSettings poolSettings = new PoolSettings();
     
     [Header("Events")]
-    public UnityEngine.Events.UnityEvent<GameObject> OnObjectSpawned;
-    public UnityEngine.Events.UnityEvent<GameObject> OnObjectReturned;
-    public UnityEngine.Events.UnityEvent OnPoolExhausted;
+    public UnityEngine.Events.UnityEvent<GameObject> onObjectSpawned;
+    public UnityEngine.Events.UnityEvent<GameObject> onObjectReturned;
+    public UnityEngine.Events.UnityEvent onPoolExhausted;
     
-    private Queue<GameObject> _availableObjects = new Queue<GameObject>();
-    private HashSet<GameObject> _activeObjects = new HashSet<GameObject>();
-    private List<GameObject> _allPooledObjects = new List<GameObject>();
+    private readonly Queue<GameObject> _availableObjects = new Queue<GameObject>();
+    private readonly HashSet<GameObject> _activeObjects = new HashSet<GameObject>();
+    private readonly List<GameObject> _allPooledObjects = new List<GameObject>();
     
     public int AvailableCount => _availableObjects.Count;
     public int ActiveCount => _activeObjects.Count;
@@ -35,7 +35,7 @@ namespace SoftBody.Scripts.Pooling
             return;
         }
         
-        for (int i = 0; i < poolSettings.initialSize; i++)
+        for (var i = 0; i < poolSettings.initialSize; i++)
         {
             CreatePooledObject();
         }
@@ -76,7 +76,7 @@ namespace SoftBody.Scripts.Pooling
             else
             {
                 Debug.LogWarning($"Pool '{gameObject.name}' exhausted!");
-                OnPoolExhausted?.Invoke();
+                onPoolExhausted?.Invoke();
                 return null;
             }
         }
@@ -89,7 +89,7 @@ namespace SoftBody.Scripts.Pooling
         {
             obj.transform.localPosition = Vector3.zero;
             obj.transform.localRotation = poolSettings.randomizeRotationOnGet ? 
-                UnityEngine.Random.rotation : Quaternion.identity;
+                Random.rotation : Quaternion.identity;
         }
         
         if (poolSettings.resetPhysicsOnGet)
@@ -108,7 +108,7 @@ namespace SoftBody.Scripts.Pooling
         var poolable = obj.GetComponent<IPoolable>();
         poolable?.OnGetFromPool();
         
-        OnObjectSpawned?.Invoke(obj);
+        onObjectSpawned?.Invoke(obj);
         
         return obj;
     }
@@ -130,7 +130,7 @@ namespace SoftBody.Scripts.Pooling
         
         obj.SetActive(false);
         
-        OnObjectReturned?.Invoke(obj);
+        onObjectReturned?.Invoke(obj);
     }
     
     public void ReturnAllActiveObjects()
@@ -146,7 +146,7 @@ namespace SoftBody.Scripts.Pooling
     {
         count = Mathf.Min(count, poolSettings.maxSize - _allPooledObjects.Count);
         
-        for (int i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
         {
             CreatePooledObject();
         }

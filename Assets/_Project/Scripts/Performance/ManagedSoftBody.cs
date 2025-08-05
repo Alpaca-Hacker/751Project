@@ -10,9 +10,9 @@ namespace SoftBody.Scripts.Performance
         public PerformanceQuality CurrentQuality { get; private set; } = PerformanceQuality.High;
         
         private readonly SoftBodyPerformanceManager _manager;
-        private MeshRenderer _renderer;
-        private int _lastMeshUpdateFrame = 0;
-        private int _lastCollisionUpdateFrame = 0;
+        private readonly MeshRenderer _renderer;
+        private int _lastMeshUpdateFrame;
+        private int _lastCollisionUpdateFrame;
         
         public ManagedSoftBody(SoftBodyPhysics softBody, SoftBodyPerformanceManager manager)
         {
@@ -38,13 +38,13 @@ namespace SoftBody.Scripts.Performance
             switch (quality)
             {
                 case PerformanceQuality.Disabled:
-                    SoftBody.settings.SkipUpdate = true;
+                    SoftBody.settings.skipUpdate = true;
                    //SoftBody.gameObject.SetActive(false);
                     break;
             
                 case PerformanceQuality.Low:
                     SoftBody.gameObject.SetActive(true);
-                    SoftBody.settings.SkipUpdate = false;
+                    SoftBody.settings.skipUpdate = false;
                     SoftBody.settings.solverIterations = 1;
                     SoftBody.settings.maxStuffingParticles = 3;
                     SoftBody.settings.damping = 0.3f; // Increased damping to reduce bouncing
@@ -54,7 +54,7 @@ namespace SoftBody.Scripts.Performance
             
                 case PerformanceQuality.Medium:
                     SoftBody.gameObject.SetActive(true);
-                    SoftBody.settings.SkipUpdate = false;
+                    SoftBody.settings.skipUpdate = false;
                     SoftBody.settings.solverIterations = 1;
                     SoftBody.settings.maxStuffingParticles = 5;
                     SoftBody.settings.damping = 0.25f; // Increased damping
@@ -64,7 +64,7 @@ namespace SoftBody.Scripts.Performance
             
                 case PerformanceQuality.High:
                     SoftBody.gameObject.SetActive(true);
-                    SoftBody.settings.SkipUpdate = false;
+                    SoftBody.settings.skipUpdate = false;
                     SoftBody.settings.solverIterations = 2;
                     SoftBody.settings.maxStuffingParticles = 8;
                     SoftBody.settings.damping = 0.2f; // Increased damping

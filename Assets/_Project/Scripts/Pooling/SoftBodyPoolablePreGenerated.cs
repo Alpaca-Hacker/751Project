@@ -6,7 +6,7 @@ public class SoftBodyPoolablePreGenerated : MonoBehaviour
 {
     private PreGeneratedToyPool _pool;
     private SoftBodyPhysics _softBody;
-    private float _activeTime = 0f;
+    private float _activeTime;
         
     [Header("Auto Return Settings")]
     public float autoReturnTime = 30f;
@@ -29,7 +29,7 @@ public class SoftBodyPoolablePreGenerated : MonoBehaviour
         if (_softBody != null)
         {
             _softBody.WakeUp();
-            _softBody.settings.SkipUpdate = false;
+            _softBody.settings.skipUpdate = false;
         }
     }
         
@@ -37,7 +37,7 @@ public class SoftBodyPoolablePreGenerated : MonoBehaviour
     {
         if (_softBody != null)
         {
-            _softBody.settings.SkipUpdate = true;
+            _softBody.settings.skipUpdate = true;
         }
     }
         

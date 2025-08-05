@@ -17,7 +17,7 @@ namespace SoftBody.Scripts.UI
         public TMPro.TextMeshProUGUI instructionsText;
         public TMPro.TextMeshProUGUI performanceText;
         public Toggle performanceToggle;
-        public bool showDetailedPerformance = false;
+        public bool showDetailedPerformance;
 
         [Header("Help Panel")] public GameObject helpPanel;
         public TMPro.TextMeshProUGUI helpText;
@@ -27,9 +27,9 @@ namespace SoftBody.Scripts.UI
         [Header("Scene Management")] 
         public SceneCollection mainMenuCollection;
 
-        private bool showPerformance = true;
-        private float updateInterval = 0.5f;
-        private float lastUpdateTime;
+        private bool _showPerformance = true;
+        private readonly float _updateInterval = 0.5f;
+        private float _lastUpdateTime;
 
         private void Start()
         {
@@ -57,7 +57,7 @@ namespace SoftBody.Scripts.UI
 
             if (performanceToggle != null)
             {
-                performanceToggle.isOn = showPerformance;
+                performanceToggle.isOn = _showPerformance;
                 performanceToggle.onValueChanged.AddListener(OnPerformanceToggleChanged);
             }
 
@@ -172,10 +172,10 @@ namespace SoftBody.Scripts.UI
         
          private void UpdatePerformanceDisplay()
         {
-            if (!showPerformance || performanceText == null) return;
+            if (!_showPerformance || performanceText == null) return;
             
-            if (Time.time - lastUpdateTime < updateInterval) return;
-            lastUpdateTime = Time.time;
+            if (Time.time - _lastUpdateTime < _updateInterval) return;
+            _lastUpdateTime = Time.time;
             
             // Use singleton instance
             var monitor = SoftBodyPerformanceMonitor.Instance;
@@ -213,7 +213,7 @@ namespace SoftBody.Scripts.UI
             if (performanceText == null) return;
             
             if (fps >= 50f)
-                performanceText.color = Color.green;
+                performanceText.color = new Color(133, 197, 121);
             else if (fps >= 30f)
                 performanceText.color = Color.yellow;
             else
@@ -227,10 +227,10 @@ namespace SoftBody.Scripts.UI
 
         private void OnPerformanceToggleChanged(bool value)
         {
-            showPerformance = value;
+            _showPerformance = value;
             if (performanceText != null)
             {
-                performanceText.gameObject.SetActive(showPerformance);
+                performanceText.gameObject.SetActive(_showPerformance);
             }
         }
 

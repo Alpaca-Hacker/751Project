@@ -3,14 +3,14 @@ using UnityEngine;
 
 namespace SoftBody.Scripts
 {
-    [System.Serializable]
+    [Serializable]
     public class SoftBodySettings
     {
         [Header("Mesh Input")]
         public Mesh inputMesh;
         public bool useProceduralCube = true; 
         [Header("Random Mesh Selection")]
-        public bool useRandomMesh = false;
+        public bool useRandomMesh;
         [Tooltip("Array of meshes to randomly choose from")]
         public Mesh[] randomMeshes = Array.Empty<Mesh>();
         [Tooltip("Choose a new random mesh each time the object is activated")]
@@ -25,8 +25,6 @@ namespace SoftBody.Scripts
         public int resolution = 4;
         
         [Header("Mesh Processing")]
-        public bool preserveUVs = true;
-        public bool preserveNormals = false;
         [Range(0.5f, 2f)]
         public float constraintDensityMultiplier = 1f;
         [Header("Mesh Connectivity")]
@@ -70,26 +68,17 @@ namespace SoftBody.Scripts
         public bool enableSleepSystem = true;
         public float sleepVelocityThreshold = 0.005f;
         public float sleepTimeThreshold = 1f;
-        public float wakeDistanceThreshold = 0.1f;
-        public bool showSleepState = false;
+        public bool showSleepState;
         
         [Header("Proximity Wake System")]
         public bool enableProximityWake = true;
         public float proximityWakeRadius = 3f;
         public int proximityCheckInterval = 60;
 
-        [Header("Movement Dampening")]
-        public bool enableMovementDampening = true;
         public float stillnessThreshold = 0.01f;     // When to start dampening
-        public float dampeningStrength = 0.95f;      // How aggressive (0.9 = 10% reduction per frame)
-        public float minMovementSpeed = 0.001f;      // Stop dampening below this speed
-        
-        [Header("Collision")]
-        public Transform floorTransform;
     
         [Header("Interaction")]
         public bool enableCollision = true;
-        public LayerMask collisionLayers = -1;
         
         [Header("Soft Body Interactions")]
         public bool enableSoftBodyCollisions = true;
@@ -101,10 +90,10 @@ namespace SoftBody.Scripts
         public float maxEnvironmentCollisionDistance = 5f;
         
         [Header("Debug Options")]
-        public bool SkipUpdate = false;
+        public bool skipUpdate;
         public bool debugMode;
         public GraphColouringMethod graphColouringMethod = GraphColouringMethod.None;
-        public bool debugMessages = false;
+        public bool debugMessages;
 
 
         public void LogSettings()

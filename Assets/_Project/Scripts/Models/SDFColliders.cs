@@ -13,10 +13,10 @@ namespace SoftBody.Scripts.Models
 
     public struct SDFCollider
     {
-        public Vector4 data1; // Position (xyz) + radius/distance (w)
-        public Vector4 data2; // Box: halfExtents (xyz) | Cylinder: radius(x), halfHeight(y)
-        public Vector4 rotation; // Quaternion xyzw
-        public int type;
+        public Vector4 Data1; // Position (xyz) + radius/distance (w)
+        public Vector4 Data2; // Box: halfExtents (xyz) | Cylinder: radius(x), halfHeight(y)
+        public Vector4 Rotation; // Quaternion xyzw
+        public int Type;
         
         private int _padding1, _padding2, _padding3; // Padding to ensure alignment
 
@@ -25,9 +25,9 @@ namespace SoftBody.Scripts.Models
         {
             return new SDFCollider
             {
-                data1 = new Vector4(center.x, center.y, center.z, radius),
-                rotation = new Vector4(0, 0, 0, 1), // Identity quaternion
-                type = (int)ColliderType.Sphere
+                Data1 = new Vector4(center.x, center.y, center.z, radius),
+                Rotation = new Vector4(0, 0, 0, 1), // Identity quaternion
+                Type = (int)ColliderType.Sphere
             };
         }
 
@@ -35,9 +35,9 @@ namespace SoftBody.Scripts.Models
         {
             return new SDFCollider
             {
-                data1 = new Vector4(normal.x, normal.y, normal.z, distance),
-                rotation = new Vector4(0, 0, 0, 1),
-                type = (int)ColliderType.Plane
+                Data1 = new Vector4(normal.x, normal.y, normal.z, distance),
+                Rotation = new Vector4(0, 0, 0, 1),
+                Type = (int)ColliderType.Plane
             };
         }
 
@@ -50,10 +50,10 @@ namespace SoftBody.Scripts.Models
         {
             return new SDFCollider
             {
-                data1 = new Vector4(center.x, center.y, center.z, 0),
-                data2 = new Vector4(halfExtents.x, halfExtents.y, halfExtents.z, 0),
-                rotation = new Vector4(rot.x, rot.y, rot.z, rot.w),
-                type = (int)ColliderType.Box
+                Data1 = new Vector4(center.x, center.y, center.z, 0),
+                Data2 = new Vector4(halfExtents.x, halfExtents.y, halfExtents.z, 0),
+                Rotation = new Vector4(rot.x, rot.y, rot.z, rot.w),
+                Type = (int)ColliderType.Box
             };
         }
 
@@ -66,10 +66,10 @@ namespace SoftBody.Scripts.Models
         {
             return new SDFCollider
             {
-                data1 = new Vector4(center.x, center.y, center.z, 0),
-                data2 = new Vector4(radius, height * 0.5f, 0, 0),
-                rotation = new Vector4(rot.x, rot.y, rot.z, rot.w),
-                type = (int)ColliderType.Cylinder
+                Data1 = new Vector4(center.x, center.y, center.z, 0),
+                Data2 = new Vector4(radius, height * 0.5f, 0, 0),
+                Rotation = new Vector4(rot.x, rot.y, rot.z, rot.w),
+                Type = (int)ColliderType.Cylinder
             };
         }
     }

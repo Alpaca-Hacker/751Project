@@ -30,8 +30,8 @@ namespace SoftBody.Scripts.Performance
         private readonly List<ManagedSoftBody> _managedSoftBodies = new();
         private Camera _mainCamera;
         private int _lastActiveCount = -1;
-        private float _updateTimer = 0f;
-        private int _frameCounter = 0;
+        private float _updateTimer;
+        private int _frameCounter;
         
         public static SoftBodyPerformanceManager Instance { get; private set; }
         
@@ -78,7 +78,7 @@ namespace SoftBody.Scripts.Performance
             _managedSoftBodies.Sort((a, b) => a.DistanceToCamera.CompareTo(b.DistanceToCamera));
             
             // Count active toys and update quality
-            int activeCount = UpdateQualityBasedOnDistanceAndLimits();
+            var activeCount = UpdateQualityBasedOnDistanceAndLimits();
             
             // Only log if count changed significantly
             if (Mathf.Abs(activeCount - _lastActiveCount) > 1)
@@ -169,7 +169,7 @@ namespace SoftBody.Scripts.Performance
         // Legacy methods for compatibility
         private void ApplyFullSettings(SoftBodyPhysics softBody)
         {
-            softBody.settings.SkipUpdate = false;
+            softBody.settings.skipUpdate = false;
             softBody.settings.solverIterations = fullQualitySolverIterations;
             softBody.settings.maxStuffingParticles = fullQualityMaxParticles;
             softBody.settings.damping = 0.01f;
@@ -177,7 +177,7 @@ namespace SoftBody.Scripts.Performance
         
         private void ApplyReducedSettings(SoftBodyPhysics softBody)
         {
-            softBody.settings.SkipUpdate = false;
+            softBody.settings.skipUpdate = false;
             softBody.settings.solverIterations = reducedQualitySolverIterations;
             softBody.settings.maxStuffingParticles = reducedQualityMaxParticles;
             softBody.settings.damping = 0.05f;
@@ -185,7 +185,7 @@ namespace SoftBody.Scripts.Performance
         
         private void ApplyMinimalSettings(SoftBodyPhysics softBody)
         {
-            softBody.settings.SkipUpdate = false;
+            softBody.settings.skipUpdate = false;
             softBody.settings.solverIterations = 1;
             softBody.settings.maxStuffingParticles = 5;
             softBody.settings.damping = 0.10f;

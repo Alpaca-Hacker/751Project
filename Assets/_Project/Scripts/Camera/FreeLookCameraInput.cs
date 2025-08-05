@@ -106,19 +106,19 @@ namespace SoftBody.Scripts
             }
         }
 
-        private void OnGUI()
-        {
-            var cmCamera = GetComponent<CinemachineCamera>();
-            if (cmCamera.Priority <= 0) return;
-
-            GUILayout.BeginArea(new Rect(Screen.width - 250, 10, 240, 120));
-            GUILayout.Label("Free Look Camera:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
-            GUILayout.Label("Right-click + drag: Look around");
-            GUILayout.Label("WASD: Move horizontally");
-            GUILayout.Label("Q/E: Move up/down");
-            GUILayout.Label("Shift: Fast movement");
-            GUILayout.Label("Mouse wheel: Quick forward/back");
-            GUILayout.EndArea();
-        }
+        // private void OnGUI()
+        // {
+        //     var cmCamera = GetComponent<CinemachineCamera>();
+        //     if (cmCamera.Priority <= 0) return;
+        //
+        //     GUILayout.BeginArea(new Rect(Screen.width - 250, 10, 240, 120));
+        //     GUILayout.Label("Free Look Camera:", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+        //     GUILayout.Label("Right-click + drag: Look around");
+        //     GUILayout.Label("WASD: Move horizontally");
+        //     GUILayout.Label("Q/E: Move up/down");
+        //     GUILayout.Label("Shift: Fast movement");
+        //     GUILayout.Label("Mouse wheel: Quick forward/back");
+        //     GUILayout.EndArea();
+        // }
     }
 }

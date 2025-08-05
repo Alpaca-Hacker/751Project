@@ -251,7 +251,7 @@ namespace SoftBody.Scripts.Generation
             }
         }
 
-        private void CreateInteriorConstraints(List<int> interiorIndices, List<Particle> particles,
+        private static void CreateInteriorConstraints(List<int> interiorIndices, List<Particle> particles,
             List<Constraint> constraints, float compliance)
         {
             var positions = particles.Select(p => p.Position).ToList();
@@ -273,7 +273,7 @@ namespace SoftBody.Scripts.Generation
             }
         }
 
-        private void ConnectSurfaceToInterior(List<int> surfaceIndices, List<int> interiorIndices,
+        private static void ConnectSurfaceToInterior(List<int> surfaceIndices, List<int> interiorIndices,
             List<Particle> particles, List<Constraint> constraints, float baseCompliance)
         {
             var positions = particles.Select(p => p.Position).ToList();
@@ -307,131 +307,7 @@ namespace SoftBody.Scripts.Generation
             }
         }
 
-        private List<VolumeConstraint> CreateVolumeConstraints(List<int> surfaceIndices, List<int> interiorIndices,
-            List<Particle> particles, SoftBodySettings settings)
-        {
-            var volumeConstraints = new List<VolumeConstraint>();
-
-            if (interiorIndices.Count == 0)
-            {
-                CreateFallbackVolumeConstraints(surfaceIndices, particles, volumeConstraints, settings);
-                return volumeConstraints;
-            }
-
-            var constraintsCreated = 0;
-            var maxVolumeConstraints = settings.maxVolumeConstraints;
-
-            foreach (var interiorIdx in interiorIndices)
-            {
-                if (constraintsCreated >= maxVolumeConstraints) break;
-
-                var interiorPos = particles[interiorIdx].Position;
-                var closestSurface = FindClosestSurfacePoints(interiorPos, surfaceIndices, particles, 8);
-
-                constraintsCreated += CreateTetrahedraFromInteriorPoint(interiorIdx, closestSurface, particles,
-                    volumeConstraints, settings, maxVolumeConstraints - constraintsCreated);
-            }
-
-            if (settings.debugMessages)
-            {
-                Debug.Log($"Created {volumeConstraints.Count} volume constraints from tetrahedralization");
-            }
-
-            return volumeConstraints;
-        }
-
-        private List<int> FindClosestSurfacePoints(Vector3 interiorPos, List<int> surfaceIndices,
-            List<Particle> particles, int count)
-        {
-            return surfaceIndices
-                .Select(idx => new { index = idx, distance = Vector3.Distance(interiorPos, particles[idx].Position) })
-                .OrderBy(x => x.distance)
-                .Take(count)
-                .Select(x => x.index)
-                .ToList();
-        }
-
-        private int CreateTetrahedraFromInteriorPoint(int interiorIdx, List<int> closestSurface,
-            List<Particle> particles, List<VolumeConstraint> volumeConstraints, SoftBodySettings settings,
-            int remainingSlots)
-        {
-            var created = 0;
-
-            for (var i = 0; i < closestSurface.Count - 2 && created < remainingSlots; i++)
-            {
-                for (var j = i + 1; j < closestSurface.Count - 1 && created < remainingSlots; j++)
-                {
-                    for (var k = j + 1; k < closestSurface.Count && created < remainingSlots; k++)
-                    {
-                        var volumeConstraint = CreateVolumeConstraint(
-                            closestSurface[i], closestSurface[j], closestSurface[k], interiorIdx,
-                            particles, settings.volumeCompliance);
-
-                        if (volumeConstraint.HasValue)
-                        {
-                            volumeConstraints.Add(volumeConstraint.Value);
-                            created++;
-                        }
-                    }
-                }
-            }
-
-            return created;
-        }
-
-        private void CreateFallbackVolumeConstraints(List<int> surfaceIndices, List<Particle> particles,
-            List<VolumeConstraint> volumeConstraints, SoftBodySettings settings)
-        {
-            var constraintsCreated = 0;
-
-            for (var i = 0; i < surfaceIndices.Count - 3 && constraintsCreated < settings.maxVolumeConstraints; i += 4)
-            {
-                var volumeConstraint = CreateVolumeConstraint(
-                    surfaceIndices[i], surfaceIndices[i + 1], surfaceIndices[i + 2], surfaceIndices[i + 3],
-                    particles, settings.volumeCompliance);
-
-                if (volumeConstraint.HasValue)
-                {
-                    volumeConstraints.Add(volumeConstraint.Value);
-                    constraintsCreated++;
-                }
-            }
-
-            if (settings.debugMessages)
-            {
-                Debug.Log($"Created {constraintsCreated} fallback volume constraints");
-            }
-        }
-
-        private Vector2[] ExpandUVsForInteriorParticles(Vector2[] surfaceUVs, int totalParticleCount,
-            int surfaceParticleCount, List<Particle> particles, SoftBodySettings settings)
-        {
-            var expandedUVs = new Vector2[totalParticleCount];
-
-            // Copy surface UVs
-            for (var i = 0; i < surfaceParticleCount; i++)
-            {
-                expandedUVs[i] = surfaceUVs[i];
-            }
-
-            // Interpolate UVs for interior particles from nearest surface particles
-            for (var i = surfaceParticleCount; i < totalParticleCount; i++)
-            {
-                var closestSurfaceIdx =
-                    FindClosestSurfaceParticle(particles[i].Position, particles, surfaceParticleCount);
-                expandedUVs[i] = surfaceUVs[closestSurfaceIdx];
-            }
-
-            if (settings.debugMessages)
-            {
-                Debug.Log(
-                    $"Expanded UV array from {surfaceParticleCount} to {totalParticleCount} for tetrahedralization");
-            }
-
-            return expandedUVs;
-        }
-
-        private int FindClosestSurfaceParticle(Vector3 interiorPos, List<Particle> particles, int surfaceCount)
+        private static int FindClosestSurfaceParticle(Vector3 interiorPos, List<Particle> particles, int surfaceCount)
         {
             var minDistance = float.MaxValue;
             var closestIndex = 0;
@@ -467,33 +343,6 @@ namespace SoftBody.Scripts.Generation
                 Lambda = 0f,
                 ColourGroup = 0
             };
-        }
-
-        private static VolumeConstraint? CreateVolumeConstraint(int p1, int p2, int p3, int p4,
-            List<Particle> particles, float compliance)
-        {
-            var pos1 = particles[p1].Position;
-            var pos2 = particles[p2].Position;
-            var pos3 = particles[p3].Position;
-            var pos4 = particles[p4].Position;
-
-            var v1 = pos1 - pos4;
-            var v2 = pos2 - pos4;
-            var v3 = pos3 - pos4;
-            var restVolume = Vector3.Dot(v1, Vector3.Cross(v2, v3)) / 6.0f;
-
-            if (Mathf.Abs(restVolume) > 0.00001f)
-            {
-                return new VolumeConstraint
-                {
-                    P1 = p1, P2 = p2, P3 = p3, P4 = p4,
-                    RestVolume = Mathf.Abs(restVolume),
-                    Compliance = compliance,
-                    Lambda = 0
-                };
-            }
-
-            return null;
         }
 
         private void CreateSimpleFallbackVolumeConstraints(List<int> surfaceParticleIndices,

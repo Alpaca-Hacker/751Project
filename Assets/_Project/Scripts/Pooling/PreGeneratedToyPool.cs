@@ -8,8 +8,8 @@ namespace SoftBody.Scripts.Pooling
         [Header("Pre-Generated Toys")]
         public List<GameObject> availableToys = new();
         
-        private List<GameObject> _availablePool = new();
-        private HashSet<GameObject> _activePool = new();
+        private readonly List<GameObject> _availablePool = new();
+        private readonly HashSet<GameObject> _activePool = new();
         
         public int AvailableCount => _availablePool.Count;
         public int ActiveCount => _activePool.Count;

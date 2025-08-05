@@ -6,7 +6,7 @@ namespace SoftBody.Scripts.Dropper
     public class ToyTracker : MonoBehaviour
     {
         private static ToyManager _manager;
-        private bool _isRegistered = false;
+        private bool _isRegistered;
         
         public void Initialize(BasicCoinPusherTest pusher, PreGeneratedToyPool softBodyPool)
         {

@@ -15,12 +15,12 @@ namespace SoftBody.Scripts.Spawning
         public SpawnSettings spawnSettings = new SpawnSettings();
 
         [Header("Events")] 
-        public UnityEngine.Events.UnityEvent<GameObject> OnObjectSpawned;
-        public UnityEngine.Events.UnityEvent OnSpawnLimitReached;
+        public UnityEngine.Events.UnityEvent<GameObject> onObjectSpawned;
+        public UnityEngine.Events.UnityEvent onSpawnLimitReached;
 
         private Coroutine _autoSpawnCoroutine;
-        private int _totalSpawned = 0;
-        private List<GameObject> _activeSpawnedObjects = new List<GameObject>();
+        private int _totalSpawned;
+        private readonly List<GameObject> _activeSpawnedObjects = new List<GameObject>();
 
         public int ActiveObjectCount => _activeSpawnedObjects.Count;
         public int TotalSpawned => _totalSpawned;
@@ -67,7 +67,7 @@ namespace SoftBody.Scripts.Spawning
             Debug.Log($"Pool setup complete. Auto spawn enabled: {spawnSettings.autoSpawn}");
 
             // Subscribe to pool events for tracking
-            objectPool.OnObjectReturned.AddListener(OnObjectReturnedToPool);
+            objectPool.onObjectReturned.AddListener(OnObjectReturnedToPool);
 
             if (spawnSettings.autoSpawn)
             {
@@ -144,11 +144,11 @@ namespace SoftBody.Scripts.Spawning
             _activeSpawnedObjects.Add(obj);
             _totalSpawned++;
 
-            OnObjectSpawned?.Invoke(obj);
+            onObjectSpawned?.Invoke(obj);
 
             if (spawnSettings.totalSpawnLimit > 0 && _totalSpawned >= spawnSettings.totalSpawnLimit)
             {
-                OnSpawnLimitReached?.Invoke();
+                onSpawnLimitReached?.Invoke();
                 StopAutoSpawn();
             }
 

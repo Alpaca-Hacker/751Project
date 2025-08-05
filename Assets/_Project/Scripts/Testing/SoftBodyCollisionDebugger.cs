@@ -9,7 +9,7 @@ namespace SoftBody.Scripts
         [Header("Debug Settings")]
         public bool showInteractionRadius = true;
         public bool showDetectedBodies = true;
-        public bool logCollisionInfo = false;
+        public bool logCollisionInfo;
         
         private SoftBodyPhysics _softBody;
         private CollisionSystem _collisionSystem;

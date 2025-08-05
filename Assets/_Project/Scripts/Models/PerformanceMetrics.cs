@@ -2,23 +2,23 @@ namespace SoftBody.Scripts.Models
 {
     public struct PerformanceMetrics
     {
-        public float totalFrameTime;
-        public float integrationTime;
-        public float constraintSolvingTime;
-        public float volumeConstraintTime;
-        public float collisionTime;
-        public float meshUpdateTime;
-        public float lambdaDecayTime;      
-        public float velocityUpdateTime;   
+        public float TotalFrameTime;
+        public float IntegrationTime;
+        public float ConstraintSolvingTime;
+        public float VolumeConstraintTime;
+        public float CollisionTime;
+        public float MeshUpdateTime;
+        public float LambdaDecayTime;      
+        public float VelocityUpdateTime;   
     
-        public int activeParticles;
-        public int activeConstraints;
-        public int solverIterations;
-        public float memoryUsageMB;
+        public int ActiveParticles;
+        public int ActiveConstraints;
+        public int SolverIterations;
+        public float MemoryUsageMb;
     
         // Calculated properties for analysis
-        public float PhysicsTimePercentage => (constraintSolvingTime + volumeConstraintTime + collisionTime) / totalFrameTime * 100f;
-        public float ConstraintTimePerIteration => constraintSolvingTime / solverIterations;
-        public float CollisionTimePerIteration => collisionTime / solverIterations;
+        public float PhysicsTimePercentage => (ConstraintSolvingTime + VolumeConstraintTime + CollisionTime) / TotalFrameTime * 100f;
+        public float ConstraintTimePerIteration => ConstraintSolvingTime / SolverIterations;
+        public float CollisionTimePerIteration => CollisionTime / SolverIterations;
     }
 }

@@ -23,17 +23,17 @@ namespace SoftBody.Scripts.Dropper
 
         private struct TrackedToy
         {
-            public GameObject gameObject;
-            public Transform transform;
-            public BasicCoinPusherTest coinPusher;
-            public  PreGeneratedToyPool pool;
+            public readonly GameObject GameObject;
+            public readonly Transform Transform;
+            public readonly BasicCoinPusherTest CoinPusher;
+            public readonly PreGeneratedToyPool Pool;
 
             public TrackedToy(GameObject obj, BasicCoinPusherTest pusher, PreGeneratedToyPool softBodyPool)
             {
-                gameObject = obj;
-                transform = obj.transform;
-                coinPusher = pusher;
-                pool = softBodyPool;
+                GameObject = obj;
+                Transform = obj.transform;
+                CoinPusher = pusher;
+                Pool = softBodyPool;
             }
         }
 
@@ -85,7 +85,7 @@ namespace SoftBody.Scripts.Dropper
                 _trackedToys.CopyTo(toysSnapshot);
                 
                 var toysToRemove = new List<TrackedToy>();
-                int checkedThisFrame = 0;
+                var checkedThisFrame = 0;
                 
                 // Iterate over the snapshot, not the live list
                 for (var i = 0; i < toysSnapshot.Length && checkedThisFrame < maxToysPerFrame; i++)
@@ -94,17 +94,17 @@ namespace SoftBody.Scripts.Dropper
                     checkedThisFrame++;
                     
                     // Check if toy is still valid
-                    if (toy.gameObject == null || !toy.gameObject.activeInHierarchy)
+                    if (toy.GameObject == null || !toy.GameObject.activeInHierarchy)
                     {
                         toysToRemove.Add(toy);
                         continue;
                     }
                     
-                    if (toy.transform.position.y < fallThreshold)
+                    if (toy.Transform.position.y < fallThreshold)
                     {
                         // Toy fell off - handle cleanup
-                        toy.coinPusher?.OnToyFellOff();
-                        toy.pool?.ReturnToy(toy.gameObject);
+                        toy.CoinPusher?.OnToyFellOff();
+                        toy.Pool?.ReturnToy(toy.GameObject);
                         toysToRemove.Add(toy);
                         continue;
                     }
@@ -134,9 +134,9 @@ namespace SoftBody.Scripts.Dropper
                 // Remove pending toys
                 foreach (var toyToRemove in _pendingRemovals)
                 {
-                    for (int i = _trackedToys.Count - 1; i >= 0; i--)
+                    for (var i = _trackedToys.Count - 1; i >= 0; i--)
                     {
-                        if (_trackedToys[i].gameObject == toyToRemove)
+                        if (_trackedToys[i].GameObject == toyToRemove)
                         {
                             _trackedToys.RemoveAt(i);
                             break;
@@ -151,7 +151,7 @@ namespace SoftBody.Scripts.Dropper
         {
             for (var i = _trackedToys.Count - 1; i >= 0; i--)
             {
-                if (_trackedToys[i].gameObject == toyToRemove.gameObject)
+                if (_trackedToys[i].GameObject == toyToRemove.GameObject)
                 {
                     _trackedToys.RemoveAt(i);
                     break;

@@ -15,12 +15,12 @@ namespace SoftBody.Scripts
         [SerializeField] private Material renderMaterial;
 
         [Header("Pre-Generated Physics Data")] [SerializeField]
-        private SerializableSoftBodyData _preGeneratedPhysicsData;
+        private SerializableSoftBodyData preGeneratedPhysicsData;
 
-        [SerializeField] private bool _hasPreGeneratedData = false;
+        [SerializeField] private bool hasPreGeneratedData;
 
         [Header("Editor Tools")] [SerializeField]
-        private bool _showPhysicsDataInfo = false;
+        private bool showPhysicsDataInfo;
 
         // Core systems
         private SoftBodySimulation _simulation;
@@ -34,25 +34,25 @@ namespace SoftBody.Scripts
 
         private Vector3 _lastPosition;
         private Vector3 _lastCenterOfMass;
-        private float _currentMovementSpeed = 0f;
+        private float _currentMovementSpeed;
         private bool _wasPreviouslyMoving = true;
-        private int _sleepCheckCounter = 0;
+        private int _sleepCheckCounter;
 
 
         // State
         private SoftBodyData _softBodyData;
         private List<Particle> _initialParticles;
-        private bool _isInitialized = false;
+        private bool _isInitialized;
 
         // Public properties
         public int ParticleCount => _simulation?.ParticleCount ?? 0;
         public int ConstraintCount => _simulation?.ConstraintCount ?? 0;
         public bool IsAsleep => _sleepSystem?.IsAsleep ?? false;
         public float MovementSpeed => _sleepSystem?.CurrentSpeed ?? 0f;
-        public float MemoryUsageMB => _simulation?.MemoryUsageMB ?? 0f;
-        public bool HasPreGeneratedData => _hasPreGeneratedData && _preGeneratedPhysicsData.IsValid;
+        public float MemoryUsageMb => _simulation?.MemoryUsageMb ?? 0f;
+        public bool HasPreGeneratedData => hasPreGeneratedData && preGeneratedPhysicsData.IsValid;
         public CollisionSystem CollisionSystem => _collisionSystem;
-        public SerializableSoftBodyData GetPreGeneratedData() => _preGeneratedPhysicsData;
+        public SerializableSoftBodyData GetPreGeneratedData() => preGeneratedPhysicsData;
 
         private void Start()
         {
@@ -68,7 +68,7 @@ namespace SoftBody.Scripts
                 return;
             }
 
-            if (settings.SkipUpdate)
+            if (settings.skipUpdate)
             {
                 return;
             }
@@ -84,7 +84,7 @@ namespace SoftBody.Scripts
                 if (settings.debugMessages)
                 {
                     Debug.Log($"Fast initialization completed for {gameObject.name} " +
-                              $"({_preGeneratedPhysicsData.particleCount} particles)");
+                              $"({preGeneratedPhysicsData.particleCount} particles)");
                 }
 
                 return;
@@ -102,7 +102,7 @@ namespace SoftBody.Scripts
             if (!result.Success)
             {
                 Debug.LogError($"Soft body initialization failed: {result.ErrorMessage}");
-                settings.SkipUpdate = true;
+                settings.skipUpdate = true;
                 return;
             }
 
@@ -117,7 +117,7 @@ namespace SoftBody.Scripts
             _initialParticles = result.InitialParticles;
 
             // Create interaction system
-            _interaction = new SoftBodyInteraction(_simulation, _sleepSystem, settings, transform);
+            _interaction = new SoftBodyInteraction(_simulation, _sleepSystem, settings);
 
             // Setup rendering
             _renderer.CreateMesh(_softBodyData, _softBodyData.UVs);
@@ -132,9 +132,9 @@ namespace SoftBody.Scripts
             try
             {
                 // Convert serialized data back to runtime format
-                var particles = _preGeneratedPhysicsData.particles.Select(p => p.ToParticle()).ToList();
-                var constraints = _preGeneratedPhysicsData.constraints.Select(c => c.ToConstraint()).ToList();
-                var volumeConstraints = _preGeneratedPhysicsData.volumeConstraints.Select(vc => vc.ToVolumeConstraint())
+                var particles = preGeneratedPhysicsData.particles.Select(p => p.ToParticle()).ToList();
+                var constraints = preGeneratedPhysicsData.constraints.Select(c => c.ToConstraint()).ToList();
+                var volumeConstraints = preGeneratedPhysicsData.volumeConstraints.Select(vc => vc.ToVolumeConstraint())
                     .ToList();
 
                 // Transform particles to current world position
@@ -151,8 +151,8 @@ namespace SoftBody.Scripts
                     Particles = particles,
                     Constraints = constraints,
                     VolumeConstraints = volumeConstraints,
-                    Indices = _preGeneratedPhysicsData.indices.ToList(),
-                    UVs = _preGeneratedPhysicsData.uvs
+                    Indices = preGeneratedPhysicsData.indices.ToList(),
+                    UVs = preGeneratedPhysicsData.uvs
                 };
 
                 // Store initial state
@@ -171,7 +171,7 @@ namespace SoftBody.Scripts
                 _renderer = new SoftBodyRenderer(transform, settings);
                 _collisionSystem = new CollisionSystem(settings, transform, _computeManager, _bufferManager);
                 _sleepSystem = new SleepSystem(settings, transform);
-                _interaction = new SoftBodyInteraction(_simulation, _sleepSystem, settings, transform);
+                _interaction = new SoftBodyInteraction(_simulation, _sleepSystem, settings);
 
                 // Setup rendering
                 _renderer.CreateMesh(_softBodyData, _softBodyData.UVs);
@@ -191,7 +191,7 @@ namespace SoftBody.Scripts
 
         private void FixedUpdate()
         {
-            if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
+            if (settings.skipUpdate || !enabled || !gameObject.activeInHierarchy)
             {
                 return;
             }
@@ -223,7 +223,7 @@ namespace SoftBody.Scripts
 
         private void Update() // MODIFY existing method
         {
-            if (settings.SkipUpdate || !enabled || !gameObject.activeInHierarchy)
+            if (settings.skipUpdate || !enabled || !gameObject.activeInHierarchy)
             {
                 return;
             }
@@ -236,12 +236,9 @@ namespace SoftBody.Scripts
                     renderMaterial.SetBuffer(Constants.Vertices, vertexBuffer);
                 }
             }
-
-            // Process any pending mesh updates
+            
             _renderer?.ProcessMeshUpdate();
-
-            // Update mesh rendering - this can happen at variable frame rate
-            // _renderer?.RequestMeshUpdate(_simulation.GetVertexBuffer());
+            
         }
 
         private void RunPhysicsSimulation()
@@ -347,7 +344,7 @@ namespace SoftBody.Scripts
                 return;
             }
 
-            settings.SkipUpdate = true; // Prevent updates during regeneration
+            settings.skipUpdate = true; // Prevent updates during regeneration
             _isInitialized = false;
 
             // Clean up existing systems
@@ -384,13 +381,10 @@ namespace SoftBody.Scripts
 
             if (wasMoving != _wasPreviouslyMoving)
             {
-                if (settings.showSleepState)
+                if (settings.showSleepState && settings.debugMessages)
                 {
-                    if (settings.debugMessages)
-                    {
-                        Debug.Log(
-                            $"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
-                    }
+                    Debug.Log(
+                        $"{gameObject.name} movement state changed: {(wasMoving ? "Moving" : "Slowing down")} (speed: {_currentMovementSpeed:F4})");
                 }
 
                 // Wake up nearby objects when this one starts moving significantly
@@ -430,7 +424,6 @@ namespace SoftBody.Scripts
             }
 
             var position = transform.position;
-            var radiusSq = radius * radius;
 
             // Find all soft bodies in scene
             var nearbySoftBodies = SoftBodyCacheManager.GetSoftBodiesNear(position, radius);
@@ -462,12 +455,6 @@ namespace SoftBody.Scripts
         
         private SerializableSoftBodyData GeneratePhysicsDataForCurrentSettings()
         {
-            List<Particle> particles;
-            List<Constraint> constraints;
-            List<VolumeConstraint> volumeConstraints;
-            List<int> indices;
-            Vector2[] uvs;
-
             // Use local position for generation, then store relative positions
             var originalPos = transform.position;
             transform.position = Vector3.zero;
@@ -475,14 +462,13 @@ namespace SoftBody.Scripts
             try
             {
                 SoftBodyGenerator.GenerateSoftBody(settings, transform,
-                    out particles, out constraints, out volumeConstraints, out indices, out uvs);
-
-                // Apply graph colouring
+                    out var particles, out var constraints, out var volumeConstraints, 
+                    out var indices, out var uvs);
+                
                 var algorithm = GraphColouringFactory.Create(settings.graphColouringMethod);
                 algorithm.ApplyColouring(constraints, particles.Count);
-
-                // Convert to local space for storage
-                for (int i = 0; i < particles.Count; i++)
+                
+                for (var i = 0; i < particles.Count; i++)
                 {
                     var p = particles[i];
                     p.Position = transform.InverseTransformPoint(p.Position);
@@ -511,8 +497,8 @@ namespace SoftBody.Scripts
 
         public void SetPreGeneratedPhysicsData(SerializableSoftBodyData physicsData)
         {
-            _preGeneratedPhysicsData = physicsData;
-            _hasPreGeneratedData = physicsData.IsValid;
+            preGeneratedPhysicsData = physicsData;
+            hasPreGeneratedData = physicsData.IsValid;
     
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(this);
@@ -553,8 +539,8 @@ namespace SoftBody.Scripts
         [ContextMenu("Clear Physics Data")]
         public void ClearPhysicsData()
         {
-            _preGeneratedPhysicsData = new SerializableSoftBodyData();
-            _hasPreGeneratedData = false;
+            preGeneratedPhysicsData = new SerializableSoftBodyData();
+            hasPreGeneratedData = false;
     
 #if UNITY_EDITOR
             UnityEditor.EditorUtility.SetDirty(this);

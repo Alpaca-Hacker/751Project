@@ -16,13 +16,7 @@ namespace SoftBody.Scripts.Generation
                 Debug.LogError($"Invalid triangle array length: {triangles.Length}");
                 return constraints;
             }
-
-         //   if (settings.debugMessages)
-        //    {
-                Debug.Log($"Generating constraints from mesh with {triangles.Length / 3} triangles");
-        //    }
-
-            // Extract edges and create structural constraints
+            
             var edges = ExtractEdgesFromTriangles(triangles, particles.Count, settings.debugMessages);
             var triangleData = ExtractTriangleData(triangles);
             
@@ -46,12 +40,8 @@ namespace SoftBody.Scripts.Generation
                 FilterConstraints(particles, constraints, settings);
                 Debug.Log($"After filtering: {constraints.Count} constraints (was {beforeFiltering})");
             }
-
-            // Analyze the results
-           // if (settings.debugMessages)
-           // {
-                AnalyzeConstraintGeneration(particles, constraints, triangles);
-           // }
+            
+            AnalyzeConstraintGeneration(particles, constraints, triangles);
 
             return constraints;
         }

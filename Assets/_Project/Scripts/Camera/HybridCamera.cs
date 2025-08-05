@@ -18,23 +18,23 @@ namespace SoftBody.Scripts
 
         [Header("Mode Switching")] public KeyCode switchModeKey = KeyCode.Tab;
 
-        private bool isOrbitMode = true;
-        private float x = 0f;
-        private float y = 0f;
-        private Vector3 freeVelocity;
+        private bool _isOrbitMode = true;
+        private float _x;
+        private float _y;
+        private Vector3 _freeVelocity;
 
         private void Start()
         {
             if (target == null)
             {
-                var softBody = FindFirstObjectByType<SoftBody.Scripts.SoftBodyPhysics>();
+                var softBody = FindFirstObjectByType<SoftBodyPhysics>();
                 if (softBody != null)
                     target = softBody.transform;
             }
 
             var angles = transform.eulerAngles;
-            x = angles.y;
-            y = angles.x;
+            _x = angles.y;
+            _y = angles.x;
         }
 
         private void Update()
@@ -42,11 +42,11 @@ namespace SoftBody.Scripts
             // Switch modes
             if (Input.GetKeyDown(switchModeKey))
             {
-                isOrbitMode = !isOrbitMode;
-                Debug.Log("Camera mode: " + (isOrbitMode ? "Orbit" : "Free"));
+                _isOrbitMode = !_isOrbitMode;
+                Debug.Log("Camera mode: " + (_isOrbitMode ? "Orbit" : "Free"));
             }
 
-            if (isOrbitMode && target)
+            if (_isOrbitMode && target)
             {
                 UpdateOrbitMode();
             }
@@ -61,9 +61,9 @@ namespace SoftBody.Scripts
             // Right click to orbit
             if (Input.GetMouseButton(1))
             {
-                x += Input.GetAxis("Mouse X") * orbitSpeed * 0.02f;
-                y -= Input.GetAxis("Mouse Y") * orbitSpeed * 0.02f;
-                y = Mathf.Clamp(y, -80f, 80f);
+                _x += Input.GetAxis("Mouse X") * orbitSpeed * 0.02f;
+                _y -= Input.GetAxis("Mouse Y") * orbitSpeed * 0.02f;
+                _y = Mathf.Clamp(_y, -80f, 80f);
             }
 
             // Scroll to zoom
@@ -71,7 +71,7 @@ namespace SoftBody.Scripts
             orbitDistance = Mathf.Clamp(orbitDistance, minDistance, maxDistance);
 
             // Position camera
-            var rotation = Quaternion.Euler(y, x, 0);
+            var rotation = Quaternion.Euler(_y, _x, 0);
             var position = rotation * new Vector3(0, 0, -orbitDistance) + target.position;
 
             transform.rotation = rotation;
@@ -83,11 +83,11 @@ namespace SoftBody.Scripts
             // Right click to look around
             if (Input.GetMouseButton(1))
             {
-                x += Input.GetAxis("Mouse X") * mouseSensitivity;
-                y -= Input.GetAxis("Mouse Y") * mouseSensitivity;
-                y = Mathf.Clamp(y, -90f, 90f);
+                _x += Input.GetAxis("Mouse X") * mouseSensitivity;
+                _y -= Input.GetAxis("Mouse Y") * mouseSensitivity;
+                _y = Mathf.Clamp(_y, -90f, 90f);
 
-                transform.rotation = Quaternion.Euler(y, x, 0);
+                transform.rotation = Quaternion.Euler(_y, _x, 0);
             }
 
             // WASD movement
@@ -100,26 +100,26 @@ namespace SoftBody.Scripts
             if (Input.GetKey(KeyCode.E)) input += Vector3.up;
 
             var speed = Input.GetKey(KeyCode.LeftShift) ? fastSpeed : freeSpeed;
-            var movement = transform.TransformDirection(input) * speed * Time.deltaTime;
+            var movement = transform.TransformDirection(input) * (speed * Time.deltaTime);
             transform.position += movement;
         }
 
-        private void OnGUI()
-        {
-            GUI.Label(new Rect(10, 10, 200, 20),
-                $"Camera Mode: {(isOrbitMode ? "Orbit" : "Free")} (Tab to switch)");
-
-            if (isOrbitMode)
-            {
-                GUI.Label(new Rect(10, 30, 200, 20), "Right-click + drag to orbit");
-                GUI.Label(new Rect(10, 50, 200, 20), "Scroll wheel to zoom");
-            }
-            else
-            {
-                GUI.Label(new Rect(10, 30, 200, 20), "WASD/QE to move");
-                GUI.Label(new Rect(10, 50, 200, 20), "Right-click + drag to look");
-                GUI.Label(new Rect(10, 70, 200, 20), "Hold Shift for fast movement");
-            }
-        }
+        // private void OnGUI()
+        // {
+        //     GUI.Label(new Rect(10, 10, 200, 20),
+        //         $"Camera Mode: {(isOrbitMode ? "Orbit" : "Free")} (Tab to switch)");
+        //
+        //     if (isOrbitMode)
+        //     {
+        //         GUI.Label(new Rect(10, 30, 200, 20), "Right-click + drag to orbit");
+        //         GUI.Label(new Rect(10, 50, 200, 20), "Scroll wheel to zoom");
+        //     }
+        //     else
+        //     {
+        //         GUI.Label(new Rect(10, 30, 200, 20), "WASD/QE to move");
+        //         GUI.Label(new Rect(10, 50, 200, 20), "Right-click + drag to look");
+        //         GUI.Label(new Rect(10, 70, 200, 20), "Hold Shift for fast movement");
+        //     }
+        // }
     }
 }

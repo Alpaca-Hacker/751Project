@@ -14,12 +14,12 @@ namespace SoftBody.Scripts
         public float warningThresholdMs = 5f;
 
         // Unity Profiler Markers
-        private static readonly ProfilerMarker s_IntegrationMarker = new("SoftBody.Integration");
-        private static readonly ProfilerMarker s_ConstraintSolvingMarker = new("SoftBody.ConstraintSolving");
-        private static readonly ProfilerMarker s_VolumeConstraintsMarker = new("SoftBody.VolumeConstraints");
-        private static readonly ProfilerMarker s_CollisionMarker = new("SoftBody.Collision");
-        private static readonly ProfilerMarker s_MeshUpdateMarker = new("SoftBody.MeshUpdate");
-        private static readonly ProfilerMarker s_BufferOperationsMarker = new("SoftBody.BufferOps");
+        private static readonly ProfilerMarker SIntegrationMarker = new("SoftBody.Integration");
+        private static readonly ProfilerMarker SConstraintSolvingMarker = new("SoftBody.ConstraintSolving");
+        private static readonly ProfilerMarker SVolumeConstraintsMarker = new("SoftBody.VolumeConstraints");
+        private static readonly ProfilerMarker SCollisionMarker = new("SoftBody.Collision");
+        private static readonly ProfilerMarker SMeshUpdateMarker = new("SoftBody.MeshUpdate");
+        private static readonly ProfilerMarker SBufferOperationsMarker = new("SoftBody.BufferOps");
 
         // GPU Timing
         private Dictionary<string, float> _gpuTimings = new();
@@ -28,29 +28,29 @@ namespace SoftBody.Scripts
         // Performance metrics
 
         private PerformanceMetrics _currentMetrics;
-        private Queue<PerformanceMetrics> _metricsHistory = new(60); // Store 60 frames
+        private readonly Queue<PerformanceMetrics> _metricsHistory = new(60); // Store 60 frames
 
         public static void BeginSample(string name)
         {
             switch (name)
             {
                 case "Integration":
-                    s_IntegrationMarker.Begin();
+                    SIntegrationMarker.Begin();
                     break;
                 case "ConstraintSolving":
-                    s_ConstraintSolvingMarker.Begin();
+                    SConstraintSolvingMarker.Begin();
                     break;
                 case "VolumeConstraints":
-                    s_VolumeConstraintsMarker.Begin();
+                    SVolumeConstraintsMarker.Begin();
                     break;
                 case "Collision":
-                    s_CollisionMarker.Begin();
+                    SCollisionMarker.Begin();
                     break;
                 case "MeshUpdate":
-                    s_MeshUpdateMarker.Begin();
+                    SMeshUpdateMarker.Begin();
                     break;
                 case "BufferOps":
-                    s_BufferOperationsMarker.Begin();
+                    SBufferOperationsMarker.Begin();
                     break;
             }
         }
@@ -60,22 +60,22 @@ namespace SoftBody.Scripts
             switch (name)
             {
                 case "Integration":
-                    s_IntegrationMarker.End();
+                    SIntegrationMarker.End();
                     break;
                 case "ConstraintSolving":
-                    s_ConstraintSolvingMarker.End();
+                    SConstraintSolvingMarker.End();
                     break;
                 case "VolumeConstraints":
-                    s_VolumeConstraintsMarker.End();
+                    SVolumeConstraintsMarker.End();
                     break;
                 case "Collision":
-                    s_CollisionMarker.End();
+                    SCollisionMarker.End();
                     break;
                 case "MeshUpdate":
-                    s_MeshUpdateMarker.End();
+                    SMeshUpdateMarker.End();
                     break;
                 case "BufferOps":
-                    s_BufferOperationsMarker.End();
+                    SBufferOperationsMarker.End();
                     break;
             }
         }
@@ -89,7 +89,7 @@ namespace SoftBody.Scripts
                 _metricsHistory.Dequeue();
 
             // Check for performance warnings
-            if (logPerformanceWarnings && metrics.totalFrameTime > warningThresholdMs)
+            if (logPerformanceWarnings && metrics.TotalFrameTime > warningThresholdMs)
             {
                 LogPerformanceWarning(metrics);
             }
@@ -97,8 +97,8 @@ namespace SoftBody.Scripts
 
         private void LogPerformanceWarning(PerformanceMetrics metrics)
         {
-            Debug.LogWarning($"SoftBody Performance Warning: Frame time {metrics.totalFrameTime:F2}ms " +
-                             $"(Particles: {metrics.activeParticles}, Constraints: {metrics.activeConstraints})");
+            Debug.LogWarning($"SoftBody Performance Warning: Frame time {metrics.TotalFrameTime:F2}ms " +
+                             $"(Particles: {metrics.ActiveParticles}, Constraints: {metrics.ActiveConstraints})");
         }
 
         public PerformanceMetrics GetAverageMetrics()
@@ -111,14 +111,14 @@ namespace SoftBody.Scripts
     
             foreach (var metrics in _metricsHistory)
             {
-                sum.totalFrameTime += metrics.totalFrameTime;
-                sum.integrationTime += metrics.integrationTime;
-                sum.constraintSolvingTime += metrics.constraintSolvingTime;
-                sum.volumeConstraintTime += metrics.volumeConstraintTime;
-                sum.collisionTime += metrics.collisionTime;
-                sum.meshUpdateTime += metrics.meshUpdateTime;
-                sum.lambdaDecayTime += metrics.lambdaDecayTime;
-                sum.velocityUpdateTime += metrics.velocityUpdateTime;
+                sum.TotalFrameTime += metrics.TotalFrameTime;
+                sum.IntegrationTime += metrics.IntegrationTime;
+                sum.ConstraintSolvingTime += metrics.ConstraintSolvingTime;
+                sum.VolumeConstraintTime += metrics.VolumeConstraintTime;
+                sum.CollisionTime += metrics.CollisionTime;
+                sum.MeshUpdateTime += metrics.MeshUpdateTime;
+                sum.LambdaDecayTime += metrics.LambdaDecayTime;
+                sum.VelocityUpdateTime += metrics.VelocityUpdateTime;
             }
     
             // Use the most recent values for non-time metrics
@@ -126,18 +126,18 @@ namespace SoftBody.Scripts
     
             return new PerformanceMetrics
             {
-                totalFrameTime = sum.totalFrameTime / count,
-                integrationTime = sum.integrationTime / count,
-                constraintSolvingTime = sum.constraintSolvingTime / count,
-                volumeConstraintTime = sum.volumeConstraintTime / count,
-                collisionTime = sum.collisionTime / count,
-                meshUpdateTime = sum.meshUpdateTime / count,
-                lambdaDecayTime = sum.lambdaDecayTime / count,
-                velocityUpdateTime = sum.velocityUpdateTime / count,
-                activeParticles = recent.activeParticles,
-                activeConstraints = recent.activeConstraints,
-                solverIterations = recent.solverIterations,
-                memoryUsageMB = recent.memoryUsageMB
+                TotalFrameTime = sum.TotalFrameTime / count,
+                IntegrationTime = sum.IntegrationTime / count,
+                ConstraintSolvingTime = sum.ConstraintSolvingTime / count,
+                VolumeConstraintTime = sum.VolumeConstraintTime / count,
+                CollisionTime = sum.CollisionTime / count,
+                MeshUpdateTime = sum.MeshUpdateTime / count,
+                LambdaDecayTime = sum.LambdaDecayTime / count,
+                VelocityUpdateTime = sum.VelocityUpdateTime / count,
+                ActiveParticles = recent.ActiveParticles,
+                ActiveConstraints = recent.ActiveConstraints,
+                SolverIterations = recent.SolverIterations,
+                MemoryUsageMb = recent.MemoryUsageMb
             };
         }
     }
