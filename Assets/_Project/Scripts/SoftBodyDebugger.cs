@@ -113,35 +113,35 @@ namespace SoftBody.Scripts
             }
         }
 
-        private void OnGUI()
-        {
-            if (!showPerformanceStats) return;
-
-            GUILayout.BeginArea(new Rect(10, 10, 200, 150));
-            GUILayout.Label("Soft Body Debug Info", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
-
-            if (_frameCount > 0)
-            {
-                var avgFrameTime = _frameTime / _frameCount;
-                var fps = 1f / avgFrameTime;
-                GUILayout.Label($"FPS: {fps:F1}");
-                GUILayout.Label($"Frame Time: {avgFrameTime * 1000:F2}ms");
-            }
-
-            if (_softBody != null && _currentParticlePositions != null)
-            {
-                GUILayout.Label($"Particles: {_currentParticlePositions.Length}");
-                GUILayout.Label("Simulation Active");
-            }
-
-            GUILayout.EndArea();
-
-            // Reset counters periodically
-            if (_frameCount > 60)
-            {
-                _frameTime = 0f;
-                _frameCount = 0;
-            }
-        }
+        // private void OnGUI()
+        // {
+        //     if (!showPerformanceStats) return;
+        //
+        //     GUILayout.BeginArea(new Rect(10, 10, 200, 150));
+        //     GUILayout.Label("Soft Body Debug Info", new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold });
+        //
+        //     if (_frameCount > 0)
+        //     {
+        //         var avgFrameTime = _frameTime / _frameCount;
+        //         var fps = 1f / avgFrameTime;
+        //         GUILayout.Label($"FPS: {fps:F1}");
+        //         GUILayout.Label($"Frame Time: {avgFrameTime * 1000:F2}ms");
+        //     }
+        //
+        //     if (_softBody != null && _currentParticlePositions != null)
+        //     {
+        //         GUILayout.Label($"Particles: {_currentParticlePositions.Length}");
+        //         GUILayout.Label("Simulation Active");
+        //     }
+        //
+        //     GUILayout.EndArea();
+        //
+        //     // Reset counters periodically
+        //     if (_frameCount > 60)
+        //     {
+        //         _frameTime = 0f;
+        //         _frameCount = 0;
+        //     }
+        // }
     }
 }

@@ -3546,32 +3546,32 @@ MonoBehaviour:
     Camera: 1 - Orbital, 2 - Follow, 3 - Free Look'
   detailedHelp: 'INTERACTIVE TOY TECHNICAL DEMO
 
-    
+
 
     OVERVIEW:
 
-    This
-    demonstration features a single soft body character designed for direct user
-    interaction and manipulation.
+    This demonstration
+    features a single soft body character designed for direct user interaction and
+    manipulation.
 
-    
+
 
     TECHNICAL FEATURES:
 
-    - Character-optimized
-    soft body physics
+    - Character-optimized soft body
+    physics
 
     - Responsive force application system
 
-    - Real-time
-    deformation with immediate visual feedback
+    - Real-time deformation
+    with immediate visual feedback
 
-    - Optimized material properties
-    for toy-like behaviour
+    - Optimized material properties for toy-like
+    behaviour
 
     - Interactive design patterns for game applications
 
-    
+
 
     INTERACTION:
 
@@ -3586,31 +3586,30 @@ MonoBehaviour:
     -
     Try varying click intensities and durations
 
-    
+
 
     WHAT TO OBSERVE:
 
-    -
-    Immediate responsive feedback to user input
+    - Immediate
+    responsive feedback to user input
 
-    - Character-like squish and
-    bounce behaviour
-
-    - How different areas respond differently to interaction
+    - Character-like squish and bounce behaviour
 
     -
-    The ''personality'' that emerges from physics parameters
+    How different areas respond differently to interaction
 
-    - Potential for
-    game character integration
+    - The ''personality''
+    that emerges from physics parameters
 
-    
+    - Potential for game character integration
 
-    DESIGN FOCUS:
 
-    This demo emphasizes
-    user experience and the potential for soft body physics in interactive entertainment
-    applications.'
+
+    DESIGN
+    FOCUS:
+
+    This demo emphasizes user experience and the potential for soft body
+    physics in interactive entertainment applications.'
   showPerformanceStats: 1
   allowReset: 1
   themeColor: {r: 0, g: 0, b: 1, a: 1}
@@ -4019,8 +4018,6 @@ MonoBehaviour:
     interiorPointDensity: 2
     size: {x: 1, y: 1, z: 1}
     resolution: 4
-    preserveUVs: 1
-    preserveNormals: 1
     constraintDensityMultiplier: 1.5
     autoFixConnectivity: 1
     connectivityMethod: 1
@@ -4050,31 +4047,23 @@ MonoBehaviour:
     enableSleepSystem: 1
     sleepVelocityThreshold: 0.005
     sleepTimeThreshold: 1
-    wakeDistanceThreshold: 0.1
     showSleepState: 0
     enableProximityWake: 1
     proximityWakeRadius: 3
     proximityCheckInterval: 60
-    enableMovementDampening: 1
     stillnessThreshold: 0.01
-    dampeningStrength: 0.95
-    minMovementSpeed: 0.001
-    floorTransform: {fileID: 192215456}
     enableCollision: 1
-    collisionLayers:
-      serializedVersion: 2
-      m_Bits: 4294967295
     enableSoftBodyCollisions: 1
     interactionStrength: 0.8
     maxSoftBodyInteractionDistance: 0.5
     maxEnvironmentCollisionDistance: 5
-    SkipUpdate: 0
+    skipUpdate: 0
     debugMode: 0
     graphColouringMethod: 2
     debugMessages: 0
   computeShader: {fileID: 7200000, guid: 83b934be4edf1444f99f1ca83c04b5f5, type: 3}
   renderMaterial: {fileID: 2100000, guid: df97884ea8bbcf74da4d89d5c49ade71, type: 2}
-  _preGeneratedPhysicsData:
+  preGeneratedPhysicsData:
     particles: []
     constraints: []
     volumeConstraints: []
@@ -4084,8 +4073,8 @@ MonoBehaviour:
     particleCount: 0
     constraintCount: 0
     volumeConstraintCount: 0
-  _hasPreGeneratedData: 0
-  _showPhysicsDataInfo: 0
+  hasPreGeneratedData: 0
+  showPhysicsDataInfo: 0
 --- !u!23 &1347859663
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -4148,7 +4137,7 @@ Transform:
   m_GameObject: {fileID: 1347859660}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1.9, y: 4.39, z: 2.719}
+  m_LocalPosition: {x: -1, y: 4.39, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 1
   m_Children: []

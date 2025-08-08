@@ -10,15 +10,16 @@ namespace SoftBody.Scripts.UI
         public SceneCollection proceduralCubeDemoCollection; 
         public SceneCollection singleToyDemoCollection;
         public SceneCollection materialDemoCollection;
-        public SceneCollection constraintDemoCollection;
+        public RectTransform creditsPanel;
         
         [Header("UI References")]
         public UnityEngine.UI.Button pusherDemoButton;
         public UnityEngine.UI.Button proceduralCubeButton;
         public UnityEngine.UI.Button singleToyButton;
         public UnityEngine.UI.Button materialDemoButton;
-        public UnityEngine.UI.Button constraintDemoButton;
+        public UnityEngine.UI.Button creditsButton;
         public UnityEngine.UI.Button exitButton;
+        public UnityEngine.UI.Button closeCreditsButton;
         
         [Header("Demo Descriptions")]
         public TMPro.TextMeshProUGUI demoDescriptionText;
@@ -27,6 +28,12 @@ namespace SoftBody.Scripts.UI
         {
             SetupButtons();
             ShowDefaultDescription();
+            ShowCredits(false);
+        }
+        
+        private void Update()
+        {
+            HandleKeyboardInput();
         }
         
         private void SetupButtons()
@@ -36,19 +43,26 @@ namespace SoftBody.Scripts.UI
             proceduralCubeButton.onClick.AddListener(() => LoadDemo(proceduralCubeDemoCollection, "Procedural Cube Demo"));
             singleToyButton.onClick.AddListener(() => LoadDemo(singleToyDemoCollection, "Interactive Toy Demo"));
             materialDemoButton.onClick.AddListener(() => LoadDemo(materialDemoCollection, "Physics Material Demo"));
-            constraintDemoButton.onClick.AddListener(() => LoadDemo(constraintDemoCollection, "Constraint Types Demo"));
+            creditsButton.onClick.AddListener(() => ShowCredits(true));
+            closeCreditsButton.onClick.AddListener(() => ShowCredits(false));
             
             // Hover descriptions
             AddHoverDescription(pusherDemoButton, GetPusherDescription());
             AddHoverDescription(proceduralCubeButton, GetProceduralCubeDescription());
             AddHoverDescription(singleToyButton, GetSingleToyDescription());
             AddHoverDescription(materialDemoButton, GetMaterialDemoDescription());
-            AddHoverDescription(constraintDemoButton, GetConstraintDemoDescription());
+            AddHoverDescription(creditsButton, CreditsDescription());
             
             // Exit button
             exitButton.onClick.AddListener(Application.Quit);
         }
+
+        private void ShowCredits(bool show)
+        {
+            creditsPanel.gameObject.SetActive(show);
+        }
         
+
         private void LoadDemo(SceneCollection collection, string demoName)
         {
             if (collection != null)
@@ -79,6 +93,13 @@ namespace SoftBody.Scripts.UI
             pointerExit.eventID = UnityEngine.EventSystems.EventTriggerType.PointerExit;
             pointerExit.callback.AddListener((data) => ShowDefaultDescription());
             trigger.triggers.Add(pointerExit);
+        }
+        
+        private void HandleKeyboardInput()
+        {
+
+            if (Input.GetKeyDown(KeyCode.Escape))
+                ShowCredits(false);
         }
         
         private void ShowDescription(string description)
@@ -131,14 +152,9 @@ namespace SoftBody.Scripts.UI
                    "Demonstrates: Physics material versatility, parameter tuning.";
         }
 
-        private string GetConstraintDemoDescription()
+        private string CreditsDescription()
         {
-            return "Constraint Types Demo\n\n" +
-                   "• Compares different internal constraint generation methods.\n" +
-                   "• 1: Surface-only constraints\n" +
-                   "• 2: Mesh-based with 'Stuffing'\n" +
-                   "• 3: Tetrahedral volume constraints\n\n" +
-                   "Demonstrates: Core physics structures, behaviour differences.";
+            return "See all the credits\n\n";
         }
     }
 }
